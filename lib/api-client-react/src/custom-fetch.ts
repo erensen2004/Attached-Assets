@@ -285,6 +285,14 @@ export async function customFetch<T = unknown>(
 
   const headers = mergeHeaders(isRequest(input) ? input.headers : undefined, headersInit);
 
+  // Inject JWT token if available
+  if (!headers.has("authorization")) {
+    const token = typeof localStorage !== "undefined" ? localStorage.getItem("ats_token") : null;
+    if (token) {
+      headers.set("authorization", `Bearer ${token}`);
+    }
+  }
+
   if (
     typeof init.body === "string" &&
     !headers.has("content-type") &&
