@@ -15,6 +15,7 @@ function formatCandidate(c: {
   status: string;
   roleId: number;
   vendorCompanyId: number;
+  cvUrl?: string | null;
   submittedAt: Date;
   updatedAt: Date;
 }, roleTitle: string, vendorCompanyName: string) {
@@ -30,6 +31,7 @@ function formatCandidate(c: {
     roleTitle,
     vendorCompanyId: c.vendorCompanyId,
     vendorCompanyName,
+    cvUrl: c.cvUrl ?? null,
     submittedAt: c.submittedAt.toISOString(),
     updatedAt: c.updatedAt.toISOString(),
   };
@@ -51,6 +53,7 @@ router.get("/", requireAuth, async (req, res) => {
         status: candidatesTable.status,
         roleId: candidatesTable.roleId,
         vendorCompanyId: candidatesTable.vendorCompanyId,
+        cvUrl: candidatesTable.cvUrl,
         submittedAt: candidatesTable.submittedAt,
         updatedAt: candidatesTable.updatedAt,
         roleTitle: jobRolesTable.title,
@@ -86,7 +89,7 @@ router.get("/", requireAuth, async (req, res) => {
 
 router.post("/", requireAuth, requireRole("vendor"), async (req, res) => {
   try {
-    const { firstName, lastName, email, phone, expectedSalary, roleId } = req.body;
+    const { firstName, lastName, email, phone, expectedSalary, roleId, cvUrl } = req.body;
     if (!firstName || !lastName || !email || !roleId) {
       res.status(400).json({ error: "Bad Request", message: "firstName, lastName, email, roleId required" });
       return;
@@ -139,6 +142,7 @@ router.post("/", requireAuth, requireRole("vendor"), async (req, res) => {
         status: "submitted",
         roleId,
         vendorCompanyId: companyId,
+        cvUrl: cvUrl ?? null,
       })
       .returning();
 

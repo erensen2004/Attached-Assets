@@ -21,4 +21,5 @@ export interface Candidate {
   vendorCompanyName: string;
   submittedAt: Date;
   updatedAt: Date;
+  cvUrl?: string | null;
 }

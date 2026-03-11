@@ -7,6 +7,7 @@ import roles from "./roles.js";
 import candidates from "./candidates.js";
 import contracts from "./contracts.js";
 import timesheets from "./timesheets.js";
+import storageRouter from "./storage.js";
 
 const router: IRouter = Router();
 
@@ -18,5 +19,6 @@ router.use("/roles", roles);
 router.use("/candidates", candidates);
 router.use("/contracts", contracts);
 router.use("/timesheets", timesheets);
+router.use(storageRouter);
 
 export default router;

@@ -203,6 +203,7 @@ export interface Candidate {
   vendorCompanyName: string;
   submittedAt: string;
   updatedAt: string;
+  cvUrl?: string | null;
 }
 
 export interface SubmitCandidateRequest {
@@ -212,6 +213,7 @@ export interface SubmitCandidateRequest {
   phone?: string;
   expectedSalary?: number;
   roleId: number;
+  cvUrl?: string;
 }
 
 export type UpdateCandidateStatusRequestStatus =
@@ -228,6 +230,20 @@ export const UpdateCandidateStatusRequestStatus = {
 
 export interface UpdateCandidateStatusRequest {
   status: UpdateCandidateStatusRequestStatus;
+}
+
+export interface UploadUrlRequest {
+  /** @minLength 1 */
+  name: string;
+  /** @minimum 1 */
+  size: number;
+  /** @minLength 1 */
+  contentType: string;
+}
+
+export interface UploadUrlResponse {
+  uploadURL: string;
+  objectPath: string;
 }
 
 export interface Contract {

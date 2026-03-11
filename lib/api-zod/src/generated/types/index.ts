@@ -35,6 +35,8 @@ export * from "./updateRoleStatusRequest";
 export * from "./updateRoleStatusRequestStatus";
 export * from "./updateUserRequest";
 export * from "./updateUserRequestRole";
+export * from "./uploadUrlRequest";
+export * from "./uploadUrlResponse";
 export * from "./user";
 export * from "./userProfile";
 export * from "./userProfileRole";
