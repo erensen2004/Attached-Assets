@@ -6,7 +6,12 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from "./addNoteRequest";
+export * from "./analytics";
+export * from "./analyticsStatusCount";
+export * from "./analyticsTopRole";
 export * from "./candidate";
+export * from "./candidateNote";
 export * from "./candidateStatus";
 export * from "./company";
 export * from "./companyType";
@@ -15,11 +20,13 @@ export * from "./createCompanyRequest";
 export * from "./createCompanyRequestType";
 export * from "./createContractRequest";
 export * from "./createRoleRequest";
+export * from "./createRoleRequestEmploymentType";
 export * from "./createUserRequest";
 export * from "./createUserRequestRole";
 export * from "./errorResponse";
 export * from "./healthStatus";
 export * from "./jobRole";
+export * from "./jobRoleEmploymentType";
 export * from "./jobRoleStatus";
 export * from "./listCandidatesParams";
 export * from "./loginRequest";
@@ -31,6 +38,7 @@ export * from "./updateCandidateStatusRequest";
 export * from "./updateCandidateStatusRequestStatus";
 export * from "./updateCompanyRequest";
 export * from "./updateRoleRequest";
+export * from "./updateRoleRequestEmploymentType";
 export * from "./updateRoleStatusRequest";
 export * from "./updateRoleStatusRequestStatus";
 export * from "./updateUserRequest";

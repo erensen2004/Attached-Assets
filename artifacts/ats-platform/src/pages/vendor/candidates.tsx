@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { UserCircle, Loader2, Plus, FileText, Upload } from "lucide-react";
+import { UserCircle, Loader2, Plus, FileText, Upload, Tag } from "lucide-react";
 import { format } from "date-fns";
 import { formatCurrency } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -108,6 +108,7 @@ export default function VendorCandidates() {
               <tr className="bg-slate-50/50 border-b border-slate-200">
                 <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Candidate</th>
                 <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Role Applied</th>
+                <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Tags</th>
                 <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Salary Req.</th>
                 <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">CV</th>
                 <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
@@ -125,7 +126,9 @@ export default function VendorCandidates() {
                     <p className="text-sm text-slate-400 mt-1">Click "Add Candidate" to submit your first candidate</p>
                   </td>
                 </tr>
-              ) : candidates?.map(c => (
+              ) : candidates?.map(c => {
+                const tags = c.tags ? c.tags.split(",").map(t => t.trim()).filter(Boolean) : [];
+                return (
                 <tr key={c.id} className="hover:bg-slate-50/50 transition-colors">
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
@@ -139,6 +142,16 @@ export default function VendorCandidates() {
                     </div>
                   </td>
                   <td className="px-6 py-4 font-medium text-slate-700">{c.roleTitle}</td>
+                  <td className="px-6 py-4">
+                    {tags.length > 0 ? (
+                      <div className="flex flex-wrap gap-1">
+                        {tags.slice(0, 2).map((tag, i) => (
+                          <span key={i} className="bg-primary/10 text-primary text-xs font-medium px-2 py-0.5 rounded-full">{tag}</span>
+                        ))}
+                        {tags.length > 2 && <span className="text-xs text-slate-400">+{tags.length - 2}</span>}
+                      </div>
+                    ) : <span className="text-slate-300 text-xs">—</span>}
+                  </td>
                   <td className="px-6 py-4 text-slate-600">{c.expectedSalary ? formatCurrency(c.expectedSalary) : '-'}</td>
                   <td className="px-6 py-4">
                     {c.cvUrl ? (
@@ -157,7 +170,8 @@ export default function VendorCandidates() {
                   <td className="px-6 py-4"><StatusBadge status={c.status} /></td>
                   <td className="px-6 py-4 text-sm text-slate-600">{format(new Date(c.submittedAt), 'MMM d, yyyy')}</td>
                 </tr>
-              ))}
+              );
+              })}
             </tbody>
           </table>
         </div>

@@ -372,6 +372,27 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /candidates/{id}:
+    get:
+      tags: [candidates]
+      operationId: getCandidate
+      summary: Get a candidate by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Candidate detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Candidate'
+        '404':
+          description: Not found
+
   /candidates/{id}/status:
     patch:
       operationId: updateCandidateStatus
@@ -1081,3 +1102,92 @@ components:
         - month
         - year
         - totalDays
+
+    CandidateNote:
+      type: object
+      properties:
+        id:
+          type: integer
+        candidateId:
+          type: integer
+        userId:
+          type: integer
+        authorName:
+          type: string
+        content:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - candidateId
+        - userId
+        - authorName
+        - content
+        - createdAt
+
+    AddNoteRequest:
+      type: object
+      properties:
+        content:
+          type: string
+      required:
+        - content
+
+    AnalyticsStatusCount:
+      type: object
+      properties:
+        status:
+          type: string
+        count:
+          type: integer
+      required:
+        - status
+        - count
+
+    AnalyticsTopRole:
+      type: object
+      properties:
+        roleId:
+          type: integer
+        roleTitle:
+          type: string
+        count:
+          type: integer
+      required:
+        - roleId
+        - roleTitle
+        - count
+
+    Analytics:
+      type: object
+      properties:
+        totalCandidates:
+          type: integer
+        totalRoles:
+          type: integer
+        totalCompanies:
+          type: integer
+        totalUsers:
+          type: integer
+        candidatesByStatus:
+          type: array
+          items:
+            $ref: '#/components/schemas/AnalyticsStatusCount'
+        rolesByStatus:
+          type: array
+          items:
+            $ref: '#/components/schemas/AnalyticsStatusCount'
+        topRoles:
+          type: array
+          items:
+            $ref: '#/components/schemas/AnalyticsTopRole'
+      required:
+        - totalCandidates
+        - totalRoles
+        - totalCompanies
+        - totalUsers
+        - candidatesByStatus
+        - rolesByStatus
+        - topRoles

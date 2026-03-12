@@ -5,6 +5,7 @@
  * ATS Platform API
  * OpenAPI spec version: 0.1.0
  */
+import type { JobRoleEmploymentType } from "./jobRoleEmploymentType";
 import type { JobRoleStatus } from "./jobRoleStatus";
 
 export interface JobRole {
@@ -12,6 +13,11 @@ export interface JobRole {
   title: string;
   description?: string | null;
   skills?: string | null;
+  salaryMin?: number | null;
+  salaryMax?: number | null;
+  location?: string | null;
+  employmentType?: JobRoleEmploymentType;
+  isRemote: boolean;
   status: JobRoleStatus;
   companyId: number;
   companyName: string;

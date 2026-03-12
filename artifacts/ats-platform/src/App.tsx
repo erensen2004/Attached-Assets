@@ -11,9 +11,12 @@ import AdminRoles from "@/pages/admin/roles";
 import AdminCandidates from "@/pages/admin/candidates";
 import AdminContracts from "@/pages/admin/contracts";
 import AdminTimesheets from "@/pages/admin/timesheets";
+import AdminAnalytics from "@/pages/admin/analytics";
 
 import ClientRoles from "@/pages/client/roles";
 import ClientRoleCandidates from "@/pages/client/role-candidates";
+import ClientCandidates from "@/pages/client/candidates";
+import ClientCandidateDetail from "@/pages/client/candidate-detail";
 import ClientTimesheets from "@/pages/client/timesheets";
 
 import VendorPositions from "@/pages/vendor/positions";
@@ -43,10 +46,13 @@ function Router() {
       <Route path="/admin/candidates" component={AdminCandidates} />
       <Route path="/admin/contracts" component={AdminContracts} />
       <Route path="/admin/timesheets" component={AdminTimesheets} />
+      <Route path="/admin/analytics" component={AdminAnalytics} />
 
       <Route path="/client" component={() => <Redirect to="/client/roles" />} />
       <Route path="/client/roles" component={ClientRoles} />
       <Route path="/client/roles/:id/candidates" component={ClientRoleCandidates} />
+      <Route path="/client/candidates" component={ClientCandidates} />
+      <Route path="/client/candidates/:id" component={ClientCandidateDetail} />
       <Route path="/client/timesheets" component={ClientTimesheets} />
 
       <Route path="/vendor" component={() => <Redirect to="/vendor/positions" />} />

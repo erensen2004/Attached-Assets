@@ -22,4 +22,5 @@ export interface Candidate {
   submittedAt: Date;
   updatedAt: Date;
   cvUrl?: string | null;
+  tags?: string | null;
 }

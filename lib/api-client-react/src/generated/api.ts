@@ -17,7 +17,10 @@ import type {
 } from "@tanstack/react-query";
 
 import type {
+  AddNoteRequest,
+  Analytics,
   Candidate,
+  CandidateNote,
   Company,
   Contract,
   CreateCompanyRequest,
@@ -1346,6 +1349,93 @@ export const useSubmitCandidate = <
 };
 
 /**
+ * @summary Get a candidate by ID
+ */
+export const getGetCandidateUrl = (id: number) => {
+  return `/api/candidates/${id}`;
+};
+
+export const getCandidate = async (
+  id: number,
+  options?: RequestInit,
+): Promise<Candidate> => {
+  return customFetch<Candidate>(getGetCandidateUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetCandidateQueryKey = (id: number) => {
+  return [`/api/candidates/${id}`] as const;
+};
+
+export const getGetCandidateQueryOptions = <
+  TData = Awaited<ReturnType<typeof getCandidate>>,
+  TError = ErrorType<void>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getCandidate>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetCandidateQueryKey(id);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getCandidate>>> = ({
+    signal,
+  }) => getCandidate(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getCandidate>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetCandidateQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getCandidate>>
+>;
+export type GetCandidateQueryError = ErrorType<void>;
+
+/**
+ * @summary Get a candidate by ID
+ */
+
+export function useGetCandidate<
+  TData = Awaited<ReturnType<typeof getCandidate>>,
+  TError = ErrorType<void>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getCandidate>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetCandidateQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
  * @summary Update candidate status (Client HR)
  */
 export const getUpdateCandidateStatusUrl = (id: number) => {
@@ -1754,6 +1844,255 @@ export const useSubmitTimesheet = <
 > => {
   return useMutation(getSubmitTimesheetMutationOptions(options));
 };
+
+/**
+ * @summary List notes for a candidate
+ */
+export const getListCandidateNotesUrl = (id: number) => {
+  return `/api/candidates/${id}/notes`;
+};
+
+export const listCandidateNotes = async (
+  id: number,
+  options?: RequestInit,
+): Promise<CandidateNote[]> => {
+  return customFetch<CandidateNote[]>(getListCandidateNotesUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListCandidateNotesQueryKey = (id: number) => {
+  return [`/api/candidates/${id}/notes`] as const;
+};
+
+export const getListCandidateNotesQueryOptions = <
+  TData = Awaited<ReturnType<typeof listCandidateNotes>>,
+  TError = ErrorType<unknown>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listCandidateNotes>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListCandidateNotesQueryKey(id);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listCandidateNotes>>
+  > = ({ signal }) => listCandidateNotes(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof listCandidateNotes>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListCandidateNotesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listCandidateNotes>>
+>;
+export type ListCandidateNotesQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List notes for a candidate
+ */
+
+export function useListCandidateNotes<
+  TData = Awaited<ReturnType<typeof listCandidateNotes>>,
+  TError = ErrorType<unknown>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listCandidateNotes>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListCandidateNotesQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Add a note to a candidate
+ */
+export const getAddCandidateNoteUrl = (id: number) => {
+  return `/api/candidates/${id}/notes`;
+};
+
+export const addCandidateNote = async (
+  id: number,
+  addNoteRequest: AddNoteRequest,
+  options?: RequestInit,
+): Promise<CandidateNote> => {
+  return customFetch<CandidateNote>(getAddCandidateNoteUrl(id), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(addNoteRequest),
+  });
+};
+
+export const getAddCandidateNoteMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof addCandidateNote>>,
+    TError,
+    { id: number; data: BodyType<AddNoteRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof addCandidateNote>>,
+  TError,
+  { id: number; data: BodyType<AddNoteRequest> },
+  TContext
+> => {
+  const mutationKey = ["addCandidateNote"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof addCandidateNote>>,
+    { id: number; data: BodyType<AddNoteRequest> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return addCandidateNote(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type AddCandidateNoteMutationResult = NonNullable<
+  Awaited<ReturnType<typeof addCandidateNote>>
+>;
+export type AddCandidateNoteMutationBody = BodyType<AddNoteRequest>;
+export type AddCandidateNoteMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Add a note to a candidate
+ */
+export const useAddCandidateNote = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof addCandidateNote>>,
+    TError,
+    { id: number; data: BodyType<AddNoteRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof addCandidateNote>>,
+  TError,
+  { id: number; data: BodyType<AddNoteRequest> },
+  TContext
+> => {
+  return useMutation(getAddCandidateNoteMutationOptions(options));
+};
+
+/**
+ * @summary Get analytics overview
+ */
+export const getGetAnalyticsUrl = () => {
+  return `/api/analytics`;
+};
+
+export const getAnalytics = async (
+  options?: RequestInit,
+): Promise<Analytics> => {
+  return customFetch<Analytics>(getGetAnalyticsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetAnalyticsQueryKey = () => {
+  return [`/api/analytics`] as const;
+};
+
+export const getGetAnalyticsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getAnalytics>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getAnalytics>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetAnalyticsQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getAnalytics>>> = ({
+    signal,
+  }) => getAnalytics({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getAnalytics>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetAnalyticsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getAnalytics>>
+>;
+export type GetAnalyticsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get analytics overview
+ */
+
+export function useGetAnalytics<
+  TData = Awaited<ReturnType<typeof getAnalytics>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getAnalytics>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetAnalyticsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
 
 /**
  * @summary Request a presigned URL for file upload

@@ -16,6 +16,7 @@ function formatCandidate(c: {
   roleId: number;
   vendorCompanyId: number;
   cvUrl?: string | null;
+  tags?: string | null;
   submittedAt: Date;
   updatedAt: Date;
 }, roleTitle: string, vendorCompanyName: string) {
@@ -32,6 +33,7 @@ function formatCandidate(c: {
     vendorCompanyId: c.vendorCompanyId,
     vendorCompanyName,
     cvUrl: c.cvUrl ?? null,
+    tags: c.tags ?? null,
     submittedAt: c.submittedAt.toISOString(),
     updatedAt: c.updatedAt.toISOString(),
   };
@@ -54,6 +56,7 @@ router.get("/", requireAuth, async (req, res) => {
         roleId: candidatesTable.roleId,
         vendorCompanyId: candidatesTable.vendorCompanyId,
         cvUrl: candidatesTable.cvUrl,
+        tags: candidatesTable.tags,
         submittedAt: candidatesTable.submittedAt,
         updatedAt: candidatesTable.updatedAt,
         roleTitle: jobRolesTable.title,
@@ -76,11 +79,45 @@ router.get("/", requireAuth, async (req, res) => {
       filtered = filtered.filter((c) => c.roleCompanyId === companyId);
     }
 
-    const result = filtered.map((c) =>
-      formatCandidate(c, c.roleTitle ?? "", c.vendorCompanyName ?? "")
-    );
+    res.json(filtered.map((c) => formatCandidate(c, c.roleTitle ?? "", c.vendorCompanyName ?? "")));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
 
-    res.json(result);
+router.get("/:id", requireAuth, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const [row] = await db
+      .select({
+        id: candidatesTable.id,
+        firstName: candidatesTable.firstName,
+        lastName: candidatesTable.lastName,
+        email: candidatesTable.email,
+        phone: candidatesTable.phone,
+        expectedSalary: candidatesTable.expectedSalary,
+        status: candidatesTable.status,
+        roleId: candidatesTable.roleId,
+        vendorCompanyId: candidatesTable.vendorCompanyId,
+        cvUrl: candidatesTable.cvUrl,
+        tags: candidatesTable.tags,
+        submittedAt: candidatesTable.submittedAt,
+        updatedAt: candidatesTable.updatedAt,
+        roleTitle: jobRolesTable.title,
+        vendorCompanyName: companiesTable.name,
+      })
+      .from(candidatesTable)
+      .leftJoin(jobRolesTable, eq(candidatesTable.roleId, jobRolesTable.id))
+      .leftJoin(companiesTable, eq(candidatesTable.vendorCompanyId, companiesTable.id))
+      .where(eq(candidatesTable.id, id));
+
+    if (!row) {
+      res.status(404).json({ error: "Not Found" });
+      return;
+    }
+
+    res.json(formatCandidate(row, row.roleTitle ?? "", row.vendorCompanyName ?? ""));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Internal Server Error" });
@@ -89,7 +126,7 @@ router.get("/", requireAuth, async (req, res) => {
 
 router.post("/", requireAuth, requireRole("vendor"), async (req, res) => {
   try {
-    const { firstName, lastName, email, phone, expectedSalary, roleId, cvUrl } = req.body;
+    const { firstName, lastName, email, phone, expectedSalary, roleId, cvUrl, tags } = req.body;
     if (!firstName || !lastName || !email || !roleId) {
       res.status(400).json({ error: "Bad Request", message: "firstName, lastName, email, roleId required" });
       return;
@@ -101,11 +138,7 @@ router.post("/", requireAuth, requireRole("vendor"), async (req, res) => {
       return;
     }
 
-    const [role] = await db
-      .select()
-      .from(jobRolesTable)
-      .where(eq(jobRolesTable.id, roleId));
-
+    const [role] = await db.select().from(jobRolesTable).where(eq(jobRolesTable.id, roleId));
     if (!role) {
       res.status(404).json({ error: "Not Found", message: "Role not found" });
       return;
@@ -119,12 +152,7 @@ router.post("/", requireAuth, requireRole("vendor"), async (req, res) => {
     const [duplicate] = await db
       .select()
       .from(candidatesTable)
-      .where(
-        and(
-          eq(candidatesTable.email, email.toLowerCase()),
-          eq(candidatesTable.roleId, roleId)
-        )
-      );
+      .where(and(eq(candidatesTable.email, email.toLowerCase()), eq(candidatesTable.roleId, roleId)));
 
     if (duplicate) {
       res.status(409).json({ error: "Conflict", message: "This candidate has already been submitted for this role" });
@@ -143,6 +171,7 @@ router.post("/", requireAuth, requireRole("vendor"), async (req, res) => {
         roleId,
         vendorCompanyId: companyId,
         cvUrl: cvUrl ?? null,
+        tags: tags ?? null,
       })
       .returning();
 
@@ -180,15 +209,8 @@ router.patch("/:id/status", requireAuth, async (req, res) => {
       return;
     }
 
-    const [role] = await db
-      .select({ title: jobRolesTable.title })
-      .from(jobRolesTable)
-      .where(eq(jobRolesTable.id, candidate.roleId));
-
-    const [vendorCompany] = await db
-      .select({ name: companiesTable.name })
-      .from(companiesTable)
-      .where(eq(companiesTable.id, candidate.vendorCompanyId));
+    const [role] = await db.select({ title: jobRolesTable.title }).from(jobRolesTable).where(eq(jobRolesTable.id, candidate.roleId));
+    const [vendorCompany] = await db.select({ name: companiesTable.name }).from(companiesTable).where(eq(companiesTable.id, candidate.vendorCompanyId));
 
     res.json(formatCandidate(candidate, role?.title ?? "", vendorCompany?.name ?? ""));
   } catch (err) {

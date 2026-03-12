@@ -14,4 +14,5 @@ export interface SubmitCandidateRequest {
   expectedSalary?: number;
   roleId: number;
   cvUrl?: string;
+  tags?: string;
 }

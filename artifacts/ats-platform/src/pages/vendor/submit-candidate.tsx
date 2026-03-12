@@ -3,7 +3,8 @@ import { useSubmitCandidate, useGetRole } from "@workspace/api-client-react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2, ArrowLeft, Send, FileText, Upload } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { Loader2, ArrowLeft, Send, FileText, Upload, Sparkles, Tag } from "lucide-react";
 import { useRoute, Link, useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 
@@ -15,9 +16,14 @@ export default function VendorSubmitCandidate() {
   const fileRef = useRef<HTMLInputElement>(null);
 
   const { data: role, isLoading: roleLoading } = useGetRole(roleId);
-  const [formData, setFormData] = useState({ firstName: "", lastName: "", email: "", phone: "", expectedSalary: "" });
+  const [formData, setFormData] = useState({
+    firstName: "", lastName: "", email: "", phone: "", expectedSalary: "", tags: ""
+  });
   const [cvFile, setCvFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [cvText, setCvText] = useState("");
+  const [showCvParse, setShowCvParse] = useState(false);
+  const [parsing, setParsing] = useState(false);
 
   const { mutate: submit, isPending } = useSubmitCandidate({
     mutation: {
@@ -52,6 +58,42 @@ export default function VendorSubmitCandidate() {
     }
   };
 
+  const handleParseCV = async () => {
+    if (!cvText.trim()) {
+      toast({ title: "Please paste CV text first", variant: "destructive" });
+      return;
+    }
+    setParsing(true);
+    try {
+      const token = localStorage.getItem("ats_token");
+      const res = await fetch("/api/cv-parse", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ cvText }),
+      });
+      if (!res.ok) {
+        toast({ title: "CV parsing failed", description: "Try again or fill in manually.", variant: "destructive" });
+        return;
+      }
+      const parsed = await res.json();
+      setFormData(prev => ({
+        ...prev,
+        firstName: parsed.firstName || prev.firstName,
+        lastName: parsed.lastName || prev.lastName,
+        email: parsed.email || prev.email,
+        phone: parsed.phone || prev.phone,
+        expectedSalary: parsed.expectedSalary ? String(parsed.expectedSalary) : prev.expectedSalary,
+        tags: parsed.skills || prev.tags,
+      }));
+      toast({ title: "CV parsed successfully!", description: "Fields pre-filled from CV." });
+      setShowCvParse(false);
+    } catch {
+      toast({ title: "CV parsing error", variant: "destructive" });
+    } finally {
+      setParsing(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setUploading(true);
@@ -67,6 +109,7 @@ export default function VendorSubmitCandidate() {
         expectedSalary: formData.expectedSalary ? Number(formData.expectedSalary) : undefined,
         roleId,
         cvUrl,
+        tags: formData.tags || undefined,
       }
     });
   };
@@ -78,12 +121,48 @@ export default function VendorSubmitCandidate() {
           <ArrowLeft className="w-4 h-4 mr-1" /> Back to Positions
         </Link>
 
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-slate-900">Submit Candidate</h1>
-          {roleLoading ? <Loader2 className="w-4 h-4 animate-spin mt-2" /> : (
-            <p className="text-slate-500 mt-1">For <span className="font-semibold text-primary">{role?.title}</span> at {role?.companyName}</p>
-          )}
+        <div className="mb-8 flex items-start justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-slate-900">Submit Candidate</h1>
+            {roleLoading ? <Loader2 className="w-4 h-4 animate-spin mt-2" /> : (
+              <p className="text-slate-500 mt-1">For <span className="font-semibold text-primary">{role?.title}</span> at {role?.companyName}</p>
+            )}
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="rounded-xl mt-1 gap-2"
+            onClick={() => setShowCvParse(!showCvParse)}
+          >
+            <Sparkles className="w-4 h-4 text-violet-500" />
+            Parse CV with AI
+          </Button>
         </div>
+
+        {showCvParse && (
+          <div className="bg-violet-50 border border-violet-200 rounded-2xl p-5 mb-6">
+            <h3 className="font-semibold text-violet-900 mb-2 flex items-center gap-2">
+              <Sparkles className="w-4 h-4" /> AI CV Parser
+            </h3>
+            <p className="text-sm text-violet-700 mb-3">Paste the candidate's CV text below. The AI will extract and pre-fill the form fields automatically.</p>
+            <Textarea
+              value={cvText}
+              onChange={e => setCvText(e.target.value)}
+              placeholder="Paste CV / resume text here..."
+              rows={6}
+              className="rounded-xl resize-none mb-3 text-sm"
+            />
+            <Button
+              type="button"
+              onClick={handleParseCV}
+              disabled={parsing}
+              className="rounded-xl bg-violet-600 hover:bg-violet-700 text-white"
+            >
+              {parsing ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Parsing...</> : <><Sparkles className="w-4 h-4 mr-2" />Parse & Fill</>}
+            </Button>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="bg-white rounded-2xl shadow-lg shadow-black/5 border border-slate-100 p-8 space-y-6">
           <div className="grid grid-cols-2 gap-6">
@@ -111,6 +190,26 @@ export default function VendorSubmitCandidate() {
               <label className="text-sm font-semibold">Expected Salary ($)</label>
               <Input type="number" value={formData.expectedSalary} onChange={e => setFormData({ ...formData, expectedSalary: e.target.value })} className="h-12 rounded-xl" />
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-semibold flex items-center gap-2">
+              <Tag className="w-4 h-4 text-slate-400" />
+              Tags / Skills <span className="font-normal text-slate-400">(comma separated)</span>
+            </label>
+            <Input
+              value={formData.tags}
+              onChange={e => setFormData({ ...formData, tags: e.target.value })}
+              placeholder="React, TypeScript, 5 years experience, Remote OK"
+              className="h-12 rounded-xl"
+            />
+            {formData.tags && (
+              <div className="flex flex-wrap gap-1 mt-1">
+                {formData.tags.split(",").map(t => t.trim()).filter(Boolean).map((tag, i) => (
+                  <span key={i} className="bg-primary/10 text-primary text-xs font-medium px-2 py-0.5 rounded-full">{tag}</span>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="space-y-2">

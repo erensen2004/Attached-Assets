@@ -5,9 +5,15 @@
  * ATS Platform API
  * OpenAPI spec version: 0.1.0
  */
+import type { UpdateRoleRequestEmploymentType } from "./updateRoleRequestEmploymentType";
 
 export interface UpdateRoleRequest {
   title?: string;
   description?: string;
   skills?: string;
+  salaryMin?: number;
+  salaryMax?: number;
+  location?: string;
+  employmentType?: UpdateRoleRequestEmploymentType;
+  isRemote?: boolean;
 }

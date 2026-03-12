@@ -147,6 +147,13 @@ export const ListRolesResponseItem = zod.object({
   title: zod.string(),
   description: zod.string().nullish(),
   skills: zod.string().nullish(),
+  salaryMin: zod.number().nullish(),
+  salaryMax: zod.number().nullish(),
+  location: zod.string().nullish(),
+  employmentType: zod
+    .enum(["full-time", "part-time", "contract", "freelance"])
+    .nullish(),
+  isRemote: zod.boolean(),
   status: zod.enum(["draft", "pending_approval", "published", "closed"]),
   companyId: zod.number(),
   companyName: zod.string(),
@@ -163,6 +170,13 @@ export const CreateRoleBody = zod.object({
   title: zod.string(),
   description: zod.string().optional(),
   skills: zod.string().optional(),
+  salaryMin: zod.number().optional(),
+  salaryMax: zod.number().optional(),
+  location: zod.string().optional(),
+  employmentType: zod
+    .enum(["full-time", "part-time", "contract", "freelance"])
+    .optional(),
+  isRemote: zod.boolean().optional(),
 });
 
 /**
@@ -177,6 +191,13 @@ export const GetRoleResponse = zod.object({
   title: zod.string(),
   description: zod.string().nullish(),
   skills: zod.string().nullish(),
+  salaryMin: zod.number().nullish(),
+  salaryMax: zod.number().nullish(),
+  location: zod.string().nullish(),
+  employmentType: zod
+    .enum(["full-time", "part-time", "contract", "freelance"])
+    .nullish(),
+  isRemote: zod.boolean(),
   status: zod.enum(["draft", "pending_approval", "published", "closed"]),
   companyId: zod.number(),
   companyName: zod.string(),
@@ -196,6 +217,13 @@ export const UpdateRoleBody = zod.object({
   title: zod.string().optional(),
   description: zod.string().optional(),
   skills: zod.string().optional(),
+  salaryMin: zod.number().optional(),
+  salaryMax: zod.number().optional(),
+  location: zod.string().optional(),
+  employmentType: zod
+    .enum(["full-time", "part-time", "contract", "freelance"])
+    .optional(),
+  isRemote: zod.boolean().optional(),
 });
 
 export const UpdateRoleResponse = zod.object({
@@ -203,6 +231,13 @@ export const UpdateRoleResponse = zod.object({
   title: zod.string(),
   description: zod.string().nullish(),
   skills: zod.string().nullish(),
+  salaryMin: zod.number().nullish(),
+  salaryMax: zod.number().nullish(),
+  location: zod.string().nullish(),
+  employmentType: zod
+    .enum(["full-time", "part-time", "contract", "freelance"])
+    .nullish(),
+  isRemote: zod.boolean(),
   status: zod.enum(["draft", "pending_approval", "published", "closed"]),
   companyId: zod.number(),
   companyName: zod.string(),
@@ -227,6 +262,13 @@ export const UpdateRoleStatusResponse = zod.object({
   title: zod.string(),
   description: zod.string().nullish(),
   skills: zod.string().nullish(),
+  salaryMin: zod.number().nullish(),
+  salaryMax: zod.number().nullish(),
+  location: zod.string().nullish(),
+  employmentType: zod
+    .enum(["full-time", "part-time", "contract", "freelance"])
+    .nullish(),
+  isRemote: zod.boolean(),
   status: zod.enum(["draft", "pending_approval", "published", "closed"]),
   companyId: zod.number(),
   companyName: zod.string(),
@@ -264,6 +306,7 @@ export const ListCandidatesResponseItem = zod.object({
   submittedAt: zod.date(),
   updatedAt: zod.date(),
   cvUrl: zod.string().nullish(),
+  tags: zod.string().nullish(),
 });
 export const ListCandidatesResponse = zod.array(ListCandidatesResponseItem);
 
@@ -278,6 +321,39 @@ export const SubmitCandidateBody = zod.object({
   expectedSalary: zod.number().optional(),
   roleId: zod.number(),
   cvUrl: zod.string().optional(),
+  tags: zod.string().optional(),
+});
+
+/**
+ * @summary Get a candidate by ID
+ */
+export const GetCandidateParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const GetCandidateResponse = zod.object({
+  id: zod.number(),
+  firstName: zod.string(),
+  lastName: zod.string(),
+  email: zod.string(),
+  phone: zod.string().nullish(),
+  expectedSalary: zod.number().nullish(),
+  status: zod.enum([
+    "submitted",
+    "screening",
+    "interview",
+    "offer",
+    "hired",
+    "rejected",
+  ]),
+  roleId: zod.number(),
+  roleTitle: zod.string(),
+  vendorCompanyId: zod.number(),
+  vendorCompanyName: zod.string(),
+  submittedAt: zod.date(),
+  updatedAt: zod.date(),
+  cvUrl: zod.string().nullish(),
+  tags: zod.string().nullish(),
 });
 
 /**
@@ -320,6 +396,7 @@ export const UpdateCandidateStatusResponse = zod.object({
   submittedAt: zod.date(),
   updatedAt: zod.date(),
   cvUrl: zod.string().nullish(),
+  tags: zod.string().nullish(),
 });
 
 /**
@@ -373,6 +450,65 @@ export const SubmitTimesheetBody = zod.object({
   month: zod.number(),
   year: zod.number(),
   totalDays: zod.number(),
+});
+
+/**
+ * @summary List notes for a candidate
+ */
+export const ListCandidateNotesParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const ListCandidateNotesResponseItem = zod.object({
+  id: zod.number(),
+  candidateId: zod.number(),
+  userId: zod.number(),
+  authorName: zod.string(),
+  content: zod.string(),
+  createdAt: zod.date(),
+});
+export const ListCandidateNotesResponse = zod.array(
+  ListCandidateNotesResponseItem,
+);
+
+/**
+ * @summary Add a note to a candidate
+ */
+export const AddCandidateNoteParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const AddCandidateNoteBody = zod.object({
+  content: zod.string(),
+});
+
+/**
+ * @summary Get analytics overview
+ */
+export const GetAnalyticsResponse = zod.object({
+  totalCandidates: zod.number(),
+  totalRoles: zod.number(),
+  totalCompanies: zod.number(),
+  totalUsers: zod.number(),
+  candidatesByStatus: zod.array(
+    zod.object({
+      status: zod.string(),
+      count: zod.number(),
+    }),
+  ),
+  rolesByStatus: zod.array(
+    zod.object({
+      status: zod.string(),
+      count: zod.number(),
+    }),
+  ),
+  topRoles: zod.array(
+    zod.object({
+      roleId: zod.number(),
+      roleTitle: zod.string(),
+      count: zod.number(),
+    }),
+  ),
 });
 
 /**

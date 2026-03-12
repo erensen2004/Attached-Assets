@@ -129,6 +129,17 @@ export interface UpdateCompanyRequest {
   isActive?: boolean;
 }
 
+export type JobRoleEmploymentType =
+  | (typeof JobRoleEmploymentType)[keyof typeof JobRoleEmploymentType]
+  | null;
+
+export const JobRoleEmploymentType = {
+  "full-time": "full-time",
+  "part-time": "part-time",
+  contract: "contract",
+  freelance: "freelance",
+} as const;
+
 export type JobRoleStatus = (typeof JobRoleStatus)[keyof typeof JobRoleStatus];
 
 export const JobRoleStatus = {
@@ -143,6 +154,11 @@ export interface JobRole {
   title: string;
   description?: string | null;
   skills?: string | null;
+  salaryMin?: number | null;
+  salaryMax?: number | null;
+  location?: string | null;
+  employmentType?: JobRoleEmploymentType;
+  isRemote: boolean;
   status: JobRoleStatus;
   companyId: number;
   companyName: string;
@@ -151,16 +167,46 @@ export interface JobRole {
   updatedAt: string;
 }
 
+export type CreateRoleRequestEmploymentType =
+  (typeof CreateRoleRequestEmploymentType)[keyof typeof CreateRoleRequestEmploymentType];
+
+export const CreateRoleRequestEmploymentType = {
+  "full-time": "full-time",
+  "part-time": "part-time",
+  contract: "contract",
+  freelance: "freelance",
+} as const;
+
 export interface CreateRoleRequest {
   title: string;
   description?: string;
   skills?: string;
+  salaryMin?: number;
+  salaryMax?: number;
+  location?: string;
+  employmentType?: CreateRoleRequestEmploymentType;
+  isRemote?: boolean;
 }
+
+export type UpdateRoleRequestEmploymentType =
+  (typeof UpdateRoleRequestEmploymentType)[keyof typeof UpdateRoleRequestEmploymentType];
+
+export const UpdateRoleRequestEmploymentType = {
+  "full-time": "full-time",
+  "part-time": "part-time",
+  contract: "contract",
+  freelance: "freelance",
+} as const;
 
 export interface UpdateRoleRequest {
   title?: string;
   description?: string;
   skills?: string;
+  salaryMin?: number;
+  salaryMax?: number;
+  location?: string;
+  employmentType?: UpdateRoleRequestEmploymentType;
+  isRemote?: boolean;
 }
 
 export type UpdateRoleStatusRequestStatus =
@@ -204,6 +250,7 @@ export interface Candidate {
   submittedAt: string;
   updatedAt: string;
   cvUrl?: string | null;
+  tags?: string | null;
 }
 
 export interface SubmitCandidateRequest {
@@ -214,6 +261,7 @@ export interface SubmitCandidateRequest {
   expectedSalary?: number;
   roleId: number;
   cvUrl?: string;
+  tags?: string;
 }
 
 export type UpdateCandidateStatusRequestStatus =
@@ -283,6 +331,40 @@ export interface SubmitTimesheetRequest {
   month: number;
   year: number;
   totalDays: number;
+}
+
+export interface CandidateNote {
+  id: number;
+  candidateId: number;
+  userId: number;
+  authorName: string;
+  content: string;
+  createdAt: string;
+}
+
+export interface AddNoteRequest {
+  content: string;
+}
+
+export interface AnalyticsStatusCount {
+  status: string;
+  count: number;
+}
+
+export interface AnalyticsTopRole {
+  roleId: number;
+  roleTitle: string;
+  count: number;
+}
+
+export interface Analytics {
+  totalCandidates: number;
+  totalRoles: number;
+  totalCompanies: number;
+  totalUsers: number;
+  candidatesByStatus: AnalyticsStatusCount[];
+  rolesByStatus: AnalyticsStatusCount[];
+  topRoles: AnalyticsTopRole[];
 }
 
 export type ListCandidatesParams = {

@@ -10,6 +10,11 @@ function formatRole(role: {
   title: string;
   description: string | null;
   skills: string | null;
+  salaryMin: string | null;
+  salaryMax: string | null;
+  location: string | null;
+  employmentType: string | null;
+  isRemote: boolean;
   status: string;
   companyId: number;
   createdAt: Date;
@@ -20,6 +25,11 @@ function formatRole(role: {
     title: role.title,
     description: role.description,
     skills: role.skills,
+    salaryMin: role.salaryMin ? Number(role.salaryMin) : null,
+    salaryMax: role.salaryMax ? Number(role.salaryMax) : null,
+    location: role.location,
+    employmentType: role.employmentType,
+    isRemote: role.isRemote,
     status: role.status,
     companyId: role.companyId,
     companyName,
@@ -33,12 +43,17 @@ router.get("/", requireAuth, async (req, res) => {
   try {
     const { role: userRole, companyId } = req.user!;
 
-    let query = db
+    let rows = await db
       .select({
         id: jobRolesTable.id,
         title: jobRolesTable.title,
         description: jobRolesTable.description,
         skills: jobRolesTable.skills,
+        salaryMin: jobRolesTable.salaryMin,
+        salaryMax: jobRolesTable.salaryMax,
+        location: jobRolesTable.location,
+        employmentType: jobRolesTable.employmentType,
+        isRemote: jobRolesTable.isRemote,
         status: jobRolesTable.status,
         companyId: jobRolesTable.companyId,
         companyName: companiesTable.name,
@@ -48,14 +63,10 @@ router.get("/", requireAuth, async (req, res) => {
       .from(jobRolesTable)
       .leftJoin(companiesTable, eq(jobRolesTable.companyId, companiesTable.id));
 
-    let rows: { id: number; title: string; description: string | null; skills: string | null; status: string; companyId: number; companyName: string | null; createdAt: Date; updatedAt: Date }[];
-
     if (userRole === "client" && companyId) {
-      rows = await query.where(eq(jobRolesTable.companyId, companyId));
+      rows = rows.filter((r) => r.companyId === companyId);
     } else if (userRole === "vendor") {
-      rows = await (query as typeof query).where(eq(jobRolesTable.status, "published"));
-    } else {
-      rows = await query;
+      rows = rows.filter((r) => r.status === "published");
     }
 
     const candidateCounts = await db
@@ -65,18 +76,11 @@ router.get("/", requireAuth, async (req, res) => {
 
     const countMap = Object.fromEntries(candidateCounts.map((c) => [c.roleId, Number(c.cnt)]));
 
-    const result = rows.map((r) => ({
-      id: r.id,
-      title: r.title,
-      description: r.description,
-      skills: r.skills,
-      status: r.status,
-      companyId: r.companyId,
-      companyName: r.companyName ?? "",
-      candidateCount: countMap[r.id] ?? 0,
-      createdAt: r.createdAt.toISOString(),
-      updatedAt: r.updatedAt.toISOString(),
-    }));
+    const result = rows.map((r) => formatRole(
+      { ...r, companyName: undefined as unknown as string, isRemote: r.isRemote ?? false },
+      r.companyName ?? "",
+      countMap[r.id] ?? 0
+    ));
 
     res.json(result);
   } catch (err) {
@@ -94,6 +98,11 @@ router.get("/:id", requireAuth, async (req, res) => {
         title: jobRolesTable.title,
         description: jobRolesTable.description,
         skills: jobRolesTable.skills,
+        salaryMin: jobRolesTable.salaryMin,
+        salaryMax: jobRolesTable.salaryMax,
+        location: jobRolesTable.location,
+        employmentType: jobRolesTable.employmentType,
+        isRemote: jobRolesTable.isRemote,
         status: jobRolesTable.status,
         companyId: jobRolesTable.companyId,
         companyName: companiesTable.name,
@@ -114,18 +123,7 @@ router.get("/:id", requireAuth, async (req, res) => {
       .from(candidatesTable)
       .where(eq(candidatesTable.roleId, id));
 
-    res.json({
-      id: row.id,
-      title: row.title,
-      description: row.description,
-      skills: row.skills,
-      status: row.status,
-      companyId: row.companyId,
-      companyName: row.companyName ?? "",
-      candidateCount: Number(cnt),
-      createdAt: row.createdAt.toISOString(),
-      updatedAt: row.updatedAt.toISOString(),
-    });
+    res.json(formatRole({ ...row, isRemote: row.isRemote ?? false }, row.companyName ?? "", Number(cnt)));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Internal Server Error" });
@@ -134,7 +132,7 @@ router.get("/:id", requireAuth, async (req, res) => {
 
 router.post("/", requireAuth, requireRole("client"), async (req, res) => {
   try {
-    const { title, description, skills } = req.body;
+    const { title, description, skills, salaryMin, salaryMax, location, employmentType, isRemote } = req.body;
     if (!title) {
       res.status(400).json({ error: "Bad Request", message: "title required" });
       return;
@@ -148,7 +146,18 @@ router.post("/", requireAuth, requireRole("client"), async (req, res) => {
 
     const [role] = await db
       .insert(jobRolesTable)
-      .values({ title, description: description ?? null, skills: skills ?? null, status: "draft", companyId })
+      .values({
+        title,
+        description: description ?? null,
+        skills: skills ?? null,
+        salaryMin: salaryMin != null ? String(salaryMin) : null,
+        salaryMax: salaryMax != null ? String(salaryMax) : null,
+        location: location ?? null,
+        employmentType: employmentType ?? null,
+        isRemote: isRemote ?? false,
+        status: "draft",
+        companyId,
+      })
       .returning();
 
     const [company] = await db
@@ -166,12 +175,17 @@ router.post("/", requireAuth, requireRole("client"), async (req, res) => {
 router.patch("/:id", requireAuth, async (req, res) => {
   try {
     const id = Number(req.params.id);
-    const { title, description, skills } = req.body;
+    const { title, description, skills, salaryMin, salaryMax, location, employmentType, isRemote } = req.body;
 
     const updates: Record<string, unknown> = { updatedAt: new Date() };
     if (title !== undefined) updates.title = title;
     if (description !== undefined) updates.description = description;
     if (skills !== undefined) updates.skills = skills;
+    if (salaryMin !== undefined) updates.salaryMin = salaryMin != null ? String(salaryMin) : null;
+    if (salaryMax !== undefined) updates.salaryMax = salaryMax != null ? String(salaryMax) : null;
+    if (location !== undefined) updates.location = location;
+    if (employmentType !== undefined) updates.employmentType = employmentType;
+    if (isRemote !== undefined) updates.isRemote = isRemote;
 
     const [role] = await db
       .update(jobRolesTable)
@@ -212,18 +226,13 @@ router.patch("/:id/status", requireAuth, async (req, res) => {
       return;
     }
 
-    const [existing] = await db
-      .select()
-      .from(jobRolesTable)
-      .where(eq(jobRolesTable.id, id));
-
+    const [existing] = await db.select().from(jobRolesTable).where(eq(jobRolesTable.id, id));
     if (!existing) {
       res.status(404).json({ error: "Not Found" });
       return;
     }
 
     const { role: userRole } = req.user!;
-
     if (status === "pending_approval" && userRole !== "client") {
       res.status(403).json({ error: "Forbidden" });
       return;

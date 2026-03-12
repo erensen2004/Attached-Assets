@@ -3,7 +3,7 @@ import { useGetMe } from "@workspace/api-client-react";
 import { 
   Building2, Users, Briefcase, UserCircle, 
   FileText, Clock, LogOut, Loader2, LayoutDashboard,
-  Menu, X
+  Menu, X, BarChart3
 } from "lucide-react";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -16,9 +16,11 @@ const SIDEBAR_NAV = {
     { name: "All Candidates", href: "/admin/candidates", icon: UserCircle },
     { name: "Contracts", href: "/admin/contracts", icon: FileText },
     { name: "Timesheets", href: "/admin/timesheets", icon: Clock },
+    { name: "Analytics", href: "/admin/analytics", icon: BarChart3 },
   ],
   client: [
     { name: "My Roles", href: "/client/roles", icon: Briefcase },
+    { name: "All Candidates", href: "/client/candidates", icon: UserCircle },
     { name: "Timesheets", href: "/client/timesheets", icon: Clock },
   ],
   vendor: [
