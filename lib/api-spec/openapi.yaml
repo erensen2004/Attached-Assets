@@ -23,6 +23,10 @@ tags:
     description: Contract management
   - name: timesheets
     description: Timesheet management
+  - name: analytics
+    description: Analytics and reporting
+  - name: notes
+    description: Candidate notes
   - name: Storage
     description: Object storage upload and serving endpoints.
 
@@ -467,6 +471,63 @@ paths:
               schema:
                 $ref: "#/components/schemas/Timesheet"
 
+  /candidates/{id}/notes:
+    get:
+      tags: [notes]
+      operationId: listCandidateNotes
+      summary: List notes for a candidate
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: List of notes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CandidateNote'
+    post:
+      tags: [notes]
+      operationId: addCandidateNote
+      summary: Add a note to a candidate
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddNoteRequest'
+      responses:
+        '201':
+          description: Note added
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CandidateNote'
+
+  /analytics:
+    get:
+      tags: [analytics]
+      operationId: getAnalytics
+      summary: Get analytics overview
+      responses:
+        '200':
+          description: Analytics data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Analytics'
+
   /storage/uploads/request-url:
     post:
       tags: [Storage]
@@ -710,6 +771,21 @@ components:
         skills:
           type: string
           nullable: true
+        salaryMin:
+          type: number
+          nullable: true
+        salaryMax:
+          type: number
+          nullable: true
+        location:
+          type: string
+          nullable: true
+        employmentType:
+          type: string
+          enum: [full-time, part-time, contract, freelance]
+          nullable: true
+        isRemote:
+          type: boolean
         status:
           type: string
           enum: [draft, pending_approval, published, closed]
@@ -729,6 +805,7 @@ components:
         - id
         - title
         - status
+        - isRemote
         - companyId
         - companyName
         - candidateCount
@@ -744,6 +821,17 @@ components:
           type: string
         skills:
           type: string
+        salaryMin:
+          type: number
+        salaryMax:
+          type: number
+        location:
+          type: string
+        employmentType:
+          type: string
+          enum: [full-time, part-time, contract, freelance]
+        isRemote:
+          type: boolean
       required:
         - title
 
@@ -756,6 +844,17 @@ components:
           type: string
         skills:
           type: string
+        salaryMin:
+          type: number
+        salaryMax:
+          type: number
+        location:
+          type: string
+        employmentType:
+          type: string
+          enum: [full-time, part-time, contract, freelance]
+        isRemote:
+          type: boolean
 
     UpdateRoleStatusRequest:
       type: object
@@ -803,6 +902,9 @@ components:
         cvUrl:
           type: string
           nullable: true
+        tags:
+          type: string
+          nullable: true
       required:
         - id
         - firstName
@@ -833,6 +935,8 @@ components:
         roleId:
           type: integer
         cvUrl:
+          type: string
+        tags:
           type: string
       required:
         - firstName
