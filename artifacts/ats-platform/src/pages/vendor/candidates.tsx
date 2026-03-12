@@ -1,19 +1,104 @@
-import { useListCandidates } from "@workspace/api-client-react";
+import { useState, useRef } from "react";
+import { useListCandidates, useSubmitCandidate, useListRoles } from "@workspace/api-client-react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { UserCircle, Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { UserCircle, Loader2, Plus, FileText, Upload } from "lucide-react";
 import { format } from "date-fns";
 import { formatCurrency } from "@/lib/utils";
+import { useToast } from "@/hooks/use-toast";
+import { useQueryClient } from "@tanstack/react-query";
+import { getListCandidatesQueryKey } from "@workspace/api-client-react";
 
 export default function VendorCandidates() {
-  // Backend returns only vendor's own candidates based on auth token
   const { data: candidates, isLoading } = useListCandidates();
+  const { data: roles } = useListRoles();
+  const [isOpen, setIsOpen] = useState(false);
+  const [cvFile, setCvFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  const publishedRoles = roles?.filter(r => r.status === 'published') || [];
+
+  const [formData, setFormData] = useState({
+    firstName: "", lastName: "", email: "", phone: "", expectedSalary: "", roleId: ""
+  });
+
+  const { mutate: submit, isPending } = useSubmitCandidate({
+    mutation: {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getListCandidatesQueryKey() });
+        setIsOpen(false);
+        setFormData({ firstName: "", lastName: "", email: "", phone: "", expectedSalary: "", roleId: "" });
+        setCvFile(null);
+        toast({ title: "Candidate submitted successfully!" });
+      },
+      onError: (err: any) => {
+        toast({
+          title: "Submission failed",
+          description: err?.message || "This candidate may already be submitted for this role.",
+          variant: "destructive"
+        });
+      }
+    }
+  });
+
+  const uploadCv = async (file: File): Promise<string | null> => {
+    try {
+      const token = localStorage.getItem("ats_token");
+      const res = await fetch("/api/storage/uploads/request-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
+      });
+      if (!res.ok) return null;
+      const { uploadURL, objectPath } = await res.json();
+      await fetch(uploadURL, { method: "PUT", headers: { "Content-Type": file.type }, body: file });
+      return objectPath;
+    } catch {
+      return null;
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.roleId) {
+      toast({ title: "Please select a position", variant: "destructive" });
+      return;
+    }
+    setUploading(true);
+    let cvUrl: string | undefined;
+    if (cvFile) {
+      const objectPath = await uploadCv(cvFile);
+      if (objectPath) cvUrl = objectPath;
+    }
+    setUploading(false);
+    submit({
+      data: {
+        ...formData,
+        roleId: Number(formData.roleId),
+        expectedSalary: formData.expectedSalary ? Number(formData.expectedSalary) : undefined,
+        cvUrl,
+      }
+    });
+  };
 
   return (
     <DashboardLayout allowedRoles={["vendor"]}>
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-slate-900">My Candidates</h1>
-        <p className="text-slate-500 mt-1">Track the pipeline status of candidates you submitted</p>
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
+        <div>
+          <h1 className="text-3xl font-bold text-slate-900">My Candidates</h1>
+          <p className="text-slate-500 mt-1">Track the pipeline status of candidates you submitted</p>
+        </div>
+        <Button className="rounded-xl shadow-md h-11 px-6" onClick={() => setIsOpen(true)}>
+          <Plus className="w-4 h-4 mr-2" />
+          Add Candidate
+        </Button>
       </div>
 
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
@@ -24,39 +109,139 @@ export default function VendorCandidates() {
                 <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Candidate</th>
                 <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Role Applied</th>
                 <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Salary Req.</th>
+                <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">CV</th>
                 <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
                 <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Date Submitted</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {isLoading ? (
-                <tr><td colSpan={5} className="p-8 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-slate-400" /></td></tr>
+                <tr><td colSpan={6} className="p-8 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-slate-400" /></td></tr>
               ) : candidates?.length === 0 ? (
-                <tr><td colSpan={5} className="p-12 text-center text-slate-500">You haven't submitted any candidates yet.</td></tr>
+                <tr>
+                  <td colSpan={6} className="p-12 text-center">
+                    <UserCircle className="w-12 h-12 mx-auto mb-3 text-slate-300" />
+                    <p className="text-slate-500 font-medium">No candidates yet</p>
+                    <p className="text-sm text-slate-400 mt-1">Click "Add Candidate" to submit your first candidate</p>
+                  </td>
+                </tr>
               ) : candidates?.map(c => (
-                  <tr key={c.id} className="hover:bg-slate-50/50 transition-colors">
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-orange-50 flex items-center justify-center flex-shrink-0 text-orange-600">
-                          <UserCircle className="w-6 h-6" />
-                        </div>
-                        <div>
-                          <div className="font-semibold text-slate-900">{c.firstName} {c.lastName}</div>
-                          <div className="text-sm text-slate-500">{c.email}</div>
-                        </div>
+                <tr key={c.id} className="hover:bg-slate-50/50 transition-colors">
+                  <td className="px-6 py-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-orange-50 flex items-center justify-center flex-shrink-0 text-orange-600">
+                        <UserCircle className="w-6 h-6" />
                       </div>
-                    </td>
-                    <td className="px-6 py-4 font-medium text-slate-700">{c.roleTitle}</td>
-                    <td className="px-6 py-4 text-slate-600">{c.expectedSalary ? formatCurrency(c.expectedSalary) : '-'}</td>
-                    <td className="px-6 py-4"><StatusBadge status={c.status} /></td>
-                    <td className="px-6 py-4 text-sm text-slate-600">{format(new Date(c.submittedAt), 'MMM d, yyyy')}</td>
-                  </tr>
-                ))
-              }
+                      <div>
+                        <div className="font-semibold text-slate-900">{c.firstName} {c.lastName}</div>
+                        <div className="text-sm text-slate-500">{c.email}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 font-medium text-slate-700">{c.roleTitle}</td>
+                  <td className="px-6 py-4 text-slate-600">{c.expectedSalary ? formatCurrency(c.expectedSalary) : '-'}</td>
+                  <td className="px-6 py-4">
+                    {c.cvUrl ? (
+                      <a
+                        href={`/api/storage${c.cvUrl}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
+                      >
+                        <FileText className="w-4 h-4" /> View CV
+                      </a>
+                    ) : (
+                      <span className="text-slate-400 text-sm">—</span>
+                    )}
+                  </td>
+                  <td className="px-6 py-4"><StatusBadge status={c.status} /></td>
+                  <td className="px-6 py-4 text-sm text-slate-600">{format(new Date(c.submittedAt), 'MMM d, yyyy')}</td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
       </div>
+
+      <Dialog open={isOpen} onOpenChange={setIsOpen}>
+        <DialogContent className="sm:max-w-xl rounded-2xl">
+          <DialogHeader>
+            <DialogTitle>Add Candidate</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSubmit} className="space-y-4 mt-2">
+            <div className="space-y-2">
+              <label className="text-sm font-semibold">Open Position</label>
+              <Select required value={formData.roleId} onValueChange={v => setFormData({ ...formData, roleId: v })}>
+                <SelectTrigger className="h-11 rounded-xl">
+                  <SelectValue placeholder="Select a position" />
+                </SelectTrigger>
+                <SelectContent>
+                  {publishedRoles.length === 0 ? (
+                    <SelectItem value="none" disabled>No open positions available</SelectItem>
+                  ) : publishedRoles.map(r => (
+                    <SelectItem key={r.id} value={r.id.toString()}>{r.title} — {r.companyName}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-sm font-semibold">First Name</label>
+                <Input required value={formData.firstName} onChange={e => setFormData({ ...formData, firstName: e.target.value })} className="h-11 rounded-xl" />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-semibold">Last Name</label>
+                <Input required value={formData.lastName} onChange={e => setFormData({ ...formData, lastName: e.target.value })} className="h-11 rounded-xl" />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-semibold">Email Address</label>
+              <Input type="email" required value={formData.email} onChange={e => setFormData({ ...formData, email: e.target.value })} className="h-11 rounded-xl" />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-sm font-semibold">Phone</label>
+                <Input value={formData.phone} onChange={e => setFormData({ ...formData, phone: e.target.value })} className="h-11 rounded-xl" />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-semibold">Expected Salary ($)</label>
+                <Input type="number" value={formData.expectedSalary} onChange={e => setFormData({ ...formData, expectedSalary: e.target.value })} className="h-11 rounded-xl" />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-semibold">CV / Resume (PDF)</label>
+              <div
+                className="border-2 border-dashed border-slate-200 rounded-xl p-4 text-center cursor-pointer hover:border-primary/50 hover:bg-primary/5 transition-colors"
+                onClick={() => fileRef.current?.click()}
+              >
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept=".pdf"
+                  className="hidden"
+                  onChange={e => setCvFile(e.target.files?.[0] || null)}
+                />
+                {cvFile ? (
+                  <div className="flex items-center justify-center gap-2 text-sm font-medium text-primary">
+                    <FileText className="w-4 h-4" /> {cvFile.name}
+                  </div>
+                ) : (
+                  <div className="text-slate-400 text-sm">
+                    <Upload className="w-5 h-5 mx-auto mb-1" />
+                    Click to upload PDF
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="flex gap-3 pt-2">
+              <Button type="button" variant="outline" onClick={() => setIsOpen(false)} className="flex-1 h-11 rounded-xl">Cancel</Button>
+              <Button type="submit" disabled={isPending || uploading} className="flex-1 h-11 rounded-xl">
+                {(isPending || uploading) ? <Loader2 className="w-4 h-4 animate-spin" /> : "Submit Candidate"}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 }
