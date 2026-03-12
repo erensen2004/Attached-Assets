@@ -93,3 +93,19 @@ artifacts-monorepo/
 
 Requires `REPLIT_AI_TOKEN` (Replit built-in AI) or `OPENAI_API_KEY` environment variable.
 Endpoint: POST /api/cv-parse with body `{ cvText: "..." }`.
+
+## Important: Rebuilding Packages After Changes
+
+After modifying the DB schema or running API codegen, rebuild the affected lib packages:
+```bash
+# Rebuild DB declarations (after schema changes)
+cd lib/db && npx tsc -p tsconfig.json
+
+# Rebuild API client declarations (after codegen)
+cd lib/api-client-react && npx tsc -p tsconfig.json
+```
+These dist folders are required for TypeScript type resolution across the monorepo.
+
+## Role Permissions (POST /api/roles)
+
+Both `admin` and `client` roles can create job roles. Admin can specify a `companyId` in the request body; clients automatically use their own company.

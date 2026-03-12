@@ -61,7 +61,7 @@ router.get("/", requireAuth, async (req, res) => {
 
       const vendorContractIds = (
         await db
-          .select({ id: contractsTable.id })
+          .select({ id: contractsTable.id, candidateId: contractsTable.candidateId })
           .from(contractsTable)
       )
         .filter((c) => vendorCandidateIds.includes(c.candidateId))
@@ -91,7 +91,7 @@ router.get("/", requireAuth, async (req, res) => {
 
       const clientContractIds = (
         await db
-          .select({ id: contractsTable.id })
+          .select({ id: contractsTable.id, candidateId: contractsTable.candidateId })
           .from(contractsTable)
       )
         .filter((c) => clientCandidateIds.includes(c.candidateId))

@@ -76,11 +76,14 @@ router.get("/", requireAuth, async (req, res) => {
 
     const countMap = Object.fromEntries(candidateCounts.map((c) => [c.roleId, Number(c.cnt)]));
 
-    const result = rows.map((r) => formatRole(
-      { ...r, companyName: undefined as unknown as string, isRemote: r.isRemote ?? false },
-      r.companyName ?? "",
-      countMap[r.id] ?? 0
-    ));
+    const result = rows.map((r) => {
+      const { companyName, ...roleFields } = r;
+      return formatRole(
+        { ...roleFields, isRemote: roleFields.isRemote ?? false },
+        companyName ?? "",
+        countMap[r.id] ?? 0
+      );
+    });
 
     res.json(result);
   } catch (err) {
@@ -130,15 +133,22 @@ router.get("/:id", requireAuth, async (req, res) => {
   }
 });
 
-router.post("/", requireAuth, requireRole("client"), async (req, res) => {
+router.post("/", requireAuth, async (req, res) => {
   try {
+    const { role: userRole } = req.user!;
+    if (userRole !== "admin" && userRole !== "client") {
+      res.status(403).json({ error: "Forbidden", message: "Insufficient permissions" });
+      return;
+    }
+
     const { title, description, skills, salaryMin, salaryMax, location, employmentType, isRemote } = req.body;
     if (!title) {
       res.status(400).json({ error: "Bad Request", message: "title required" });
       return;
     }
 
-    const companyId = req.user!.companyId;
+    // Admin can specify companyId in the body; client uses their own companyId
+    const companyId = userRole === "admin" ? (req.body.companyId ?? req.user!.companyId) : req.user!.companyId;
     if (!companyId) {
       res.status(400).json({ error: "Bad Request", message: "User has no associated company" });
       return;

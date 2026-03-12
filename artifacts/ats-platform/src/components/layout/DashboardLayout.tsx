@@ -34,11 +34,7 @@ const SIDEBAR_NAV = {
 export function DashboardLayout({ children, allowedRoles }: { children: React.ReactNode, allowedRoles: string[] }) {
   const [location, setLocation] = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const { data: user, isLoading, error } = useGetMe({
-    query: { 
-      retry: false,
-    }
-  });
+  const { data: user, isLoading, error } = useGetMe();
 
   if (isLoading) {
     return (
