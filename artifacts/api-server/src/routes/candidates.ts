@@ -187,7 +187,7 @@ router.post("/", requireAuth, requireRole("vendor"), async (req, res) => {
   }
 });
 
-router.patch("/:id/status", requireAuth, async (req, res) => {
+router.patch("/:id/status", requireAuth, requireRole("admin", "client"), async (req, res) => {
   try {
     const id = Number(req.params.id);
     const { status } = req.body;

@@ -5,7 +5,7 @@ import { requireAuth, requireRole } from "../lib/auth.js";
 
 const router: IRouter = Router();
 
-router.get("/", requireAuth, async (req, res) => {
+router.get("/", requireAuth, requireRole("admin"), async (req, res) => {
   try {
     const { role: userRole, companyId } = req.user!;
 

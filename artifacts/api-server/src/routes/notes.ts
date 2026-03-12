@@ -1,11 +1,11 @@
 import { Router, type IRouter } from "express";
 import { db, candidateNotesTable, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { requireAuth } from "../lib/auth.js";
+import { requireAuth, requireRole } from "../lib/auth.js";
 
 const router: IRouter = Router({ mergeParams: true });
 
-router.get("/", requireAuth, async (req, res) => {
+router.get("/", requireAuth, requireRole("admin", "client"), async (req, res) => {
   try {
     const candidateId = Number(req.params.id);
 
@@ -29,7 +29,7 @@ router.get("/", requireAuth, async (req, res) => {
   }
 });
 
-router.post("/", requireAuth, async (req, res) => {
+router.post("/", requireAuth, requireRole("admin", "client"), async (req, res) => {
   try {
     const candidateId = Number(req.params.id);
     const { content } = req.body;

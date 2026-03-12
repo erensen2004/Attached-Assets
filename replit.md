@@ -109,3 +109,14 @@ These dist folders are required for TypeScript type resolution across the monore
 ## Role Permissions (POST /api/roles)
 
 Both `admin` and `client` roles can create job roles. Admin can specify a `companyId` in the request body; clients automatically use their own company.
+
+## Security: Route Access Control
+
+- GET/POST `/api/analytics` → Admin only
+- GET/POST `/api/candidates/:id/notes` → Admin + Client only (vendors cannot add notes)
+- PATCH `/api/candidates/:id/status` → Admin + Client only (vendors cannot change pipeline status)
+- POST `/api/roles` → Admin + Client only
+- GET/POST `/api/companies`, GET/POST `/api/users` → Admin only
+- GET `/api/roles` → All (vendor sees published only; client sees own company's; admin sees all)
+- GET `/api/candidates` → All (each role sees filtered results)
+- GET `/api/timesheets`, `/api/contracts` → All (filtered by role internally)
