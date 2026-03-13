@@ -1,9 +1,9 @@
-import { Router, type IRouter } from "express";
+import { Router } from "express";
 import { db, candidateNotesTable, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { requireAuth, requireRole } from "../lib/auth.js";
 
-const router: IRouter = Router({ mergeParams: true });
+const router = Router({ mergeParams: true });
 
 router.get("/", requireAuth, requireRole("admin", "client"), async (req, res) => {
   try {
