@@ -1,45 +1,38 @@
-import { Router } from "express";
+import { Router, Request, Response } from "express";
 import OpenAI from "openai";
-import { z } from "zod";
-import { requireAuth, requireRole } from "../lib/auth.js";
+import { createRequire } from "module";
+import { requireAuth } from "../lib/auth.js";
+import { requireRole } from "../lib/authz.js";
+import { CvParseResponseSchema } from "../lib/schemas.js";
+import { Errors } from "../lib/errors.js";
+
+const require = createRequire(import.meta.url);
+const pdfParse = require("pdf-parse") as (buf: Buffer) => Promise<{ text: string }>;
 
 const router = Router();
 
-const CvParseResponseSchema = z.object({
-  firstName: z.string().min(1),
-  lastName: z.string().min(1),
-  email: z.string().email(),
-  phone: z.string().nullable().optional(),
-  skills: z.string().optional(),
-  expectedSalary: z.number().nullable().optional(),
-});
+async function extractTextFromPdf(buffer: Buffer): Promise<string> {
+  const data = await pdfParse(buffer);
+  return data.text;
+}
 
-router.post("/", requireAuth, requireRole("vendor"), async (req, res) => {
-  try {
-    const { cvText } = req.body;
+async function parseWithAI(cvText: string): Promise<Record<string, unknown>> {
+  const apiKey = process.env.REPLIT_AI_TOKEN || process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    throw new Error("AI service not configured");
+  }
 
-    if (!cvText || !cvText.trim()) {
-      res.status(400).json({ error: "Bad Request", message: "cvText required" });
-      return;
-    }
+  const client = new OpenAI({
+    apiKey,
+    baseURL: process.env.REPLIT_AI_TOKEN ? "https://ai.replit.com" : undefined,
+  });
 
-    const apiKey = process.env.REPLIT_AI_TOKEN || process.env.OPENAI_API_KEY;
-    if (!apiKey) {
-      res.status(503).json({ error: "Service Unavailable", message: "AI service not configured" });
-      return;
-    }
-
-    const client = new OpenAI({
-      apiKey,
-      baseURL: process.env.REPLIT_AI_TOKEN ? "https://ai.replit.com" : undefined,
-    });
-
-    const completion = await client.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
-        {
-          role: "system",
-          content: `You are a CV parser. Extract structured data from CVs and return ONLY valid JSON with these fields:
+  const completion = await client.chat.completions.create({
+    model: "gpt-4o-mini",
+    messages: [
+      {
+        role: "system",
+        content: `You are a CV parser. Extract structured data from CVs and return ONLY valid JSON with these fields:
 {
   "firstName": string,
   "lastName": string,
@@ -49,39 +42,92 @@ router.post("/", requireAuth, requireRole("vendor"), async (req, res) => {
   "expectedSalary": number or null
 }
 Return only the JSON object, no markdown or extra text.`,
-        },
-        {
-          role: "user",
-          content: `Parse this CV:\n\n${cvText.slice(0, 4000)}`,
-        },
-      ],
-      temperature: 0.1,
-    });
+      },
+      {
+        role: "user",
+        content: `Parse this CV:\n\n${cvText.slice(0, 4000)}`,
+      },
+    ],
+    temperature: 0.1,
+  });
 
-    const raw = completion.choices[0]?.message?.content ?? "{}";
+  const raw = completion.choices[0]?.message?.content ?? "{}";
+  return JSON.parse(raw);
+}
+
+/**
+ * POST /cv-parse
+ *
+ * Parses a CV from either:
+ * 1. JSON body: { cvText: string }  — manual text input
+ * 2. Binary body with Content-Type: application/pdf — auto PDF extraction
+ *
+ * Returns validated structured candidate data.
+ */
+router.post("/", requireAuth, requireRole("vendor"), async (req: Request, res: Response) => {
+  try {
+    const apiKey = process.env.REPLIT_AI_TOKEN || process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+      Errors.serviceUnavailable(res, "AI service not configured");
+      return;
+    }
+
+    let cvText: string;
+
+    if (req.headers["content-type"]?.includes("application/pdf")) {
+      const chunks: Buffer[] = [];
+      req.on("data", (chunk: Buffer) => chunks.push(chunk));
+      await new Promise<void>((resolve, reject) => {
+        req.on("end", resolve);
+        req.on("error", reject);
+      });
+
+      const pdfBuffer = Buffer.concat(chunks);
+      if (!pdfBuffer.length) {
+        Errors.badRequest(res, "PDF body is empty");
+        return;
+      }
+
+      try {
+        cvText = await extractTextFromPdf(pdfBuffer);
+      } catch {
+        Errors.badRequest(res, "Failed to extract text from PDF");
+        return;
+      }
+    } else {
+      const rawText = req.body?.cvText;
+      if (!rawText || typeof rawText !== "string" || !rawText.trim()) {
+        Errors.badRequest(res, "cvText required (or send a PDF as application/pdf body)");
+        return;
+      }
+      cvText = rawText;
+    }
 
     let parsedJson: Record<string, unknown>;
     try {
-      parsedJson = JSON.parse(raw);
-    } catch {
-      res.status(422).json({ error: "Unprocessable Entity", message: "AI returned invalid JSON" });
+      parsedJson = await parseWithAI(cvText);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      if (message === "AI service not configured") {
+        Errors.serviceUnavailable(res, "AI service not configured");
+      } else if (message.includes("JSON")) {
+        Errors.badRequest(res, "AI returned invalid JSON");
+      } else {
+        throw err;
+      }
       return;
     }
 
     const validated = CvParseResponseSchema.safeParse(parsedJson);
     if (!validated.success) {
-      res.status(422).json({
-        error: "Unprocessable Entity",
-        message: "AI response did not match expected schema",
-        details: validated.error.flatten(),
-      });
+      Errors.validation(res, validated.error.flatten());
       return;
     }
 
     res.json(validated.data);
   } catch (err) {
     console.error("CV parse error:", err);
-    res.status(500).json({ error: "Internal Server Error", message: "CV parsing failed" });
+    Errors.internal(res, "CV parsing failed");
   }
 });
 

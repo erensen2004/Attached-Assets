@@ -1,7 +1,9 @@
 import { Router } from "express";
 import { db, companiesTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { requireAuth, requireRole } from "../lib/auth.js";
+import { requireAuth } from "../lib/auth.js";
+import { requireRole } from "../lib/authz.js";
+import { Errors } from "../lib/errors.js";
 
 const router = Router();
 
@@ -11,7 +13,7 @@ router.get("/", requireAuth, requireRole("admin"), async (_req, res) => {
     res.json(companies);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "Internal Server Error" });
+    Errors.internal(res);
   }
 });
 
@@ -19,7 +21,7 @@ router.post("/", requireAuth, requireRole("admin"), async (req, res) => {
   try {
     const { name, type } = req.body;
     if (!name || !type || !["client", "vendor"].includes(type)) {
-      res.status(400).json({ error: "Bad Request", message: "name and type (client|vendor) required" });
+      Errors.badRequest(res, "name and type (client|vendor) required");
       return;
     }
 
@@ -31,7 +33,7 @@ router.post("/", requireAuth, requireRole("admin"), async (req, res) => {
     res.status(201).json(company);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "Internal Server Error" });
+    Errors.internal(res);
   }
 });
 
@@ -45,7 +47,7 @@ router.patch("/:id", requireAuth, requireRole("admin"), async (req, res) => {
     if (isActive !== undefined) updates.isActive = isActive;
 
     if (Object.keys(updates).length === 0) {
-      res.status(400).json({ error: "Bad Request", message: "No fields to update" });
+      Errors.badRequest(res, "No fields to update");
       return;
     }
 
@@ -56,14 +58,14 @@ router.patch("/:id", requireAuth, requireRole("admin"), async (req, res) => {
       .returning();
 
     if (!company) {
-      res.status(404).json({ error: "Not Found" });
+      Errors.notFound(res);
       return;
     }
 
     res.json(company);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "Internal Server Error" });
+    Errors.internal(res);
   }
 });
 

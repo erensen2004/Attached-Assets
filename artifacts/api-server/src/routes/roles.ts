@@ -1,7 +1,11 @@
 import { Router } from "express";
 import { db, jobRolesTable, companiesTable, candidatesTable } from "@workspace/db";
 import { eq, count } from "drizzle-orm";
-import { requireAuth, requireRole } from "../lib/auth.js";
+import { requireAuth } from "../lib/auth.js";
+import { requireRole, resolveRoleAccess } from "../lib/authz.js";
+import { validate } from "../middlewares/validate.js";
+import { CreateRoleSchema, UpdateRoleSchema, RoleStatusSchema } from "../lib/schemas.js";
+import { Errors } from "../lib/errors.js";
 
 const router = Router();
 
@@ -37,6 +41,14 @@ function formatRole(role: {
     createdAt: role.createdAt.toISOString(),
     updatedAt: role.updatedAt.toISOString(),
   };
+}
+
+async function getCandidateCount(roleId: number): Promise<number> {
+  const [{ cnt }] = await db
+    .select({ cnt: count() })
+    .from(candidatesTable)
+    .where(eq(candidatesTable.roleId, roleId));
+  return Number(cnt);
 }
 
 router.get("/", requireAuth, async (req, res) => {
@@ -76,26 +88,26 @@ router.get("/", requireAuth, async (req, res) => {
 
     const countMap = Object.fromEntries(candidateCounts.map((c) => [c.roleId, Number(c.cnt)]));
 
-    const result = rows.map((r) => {
-      const { companyName, ...roleFields } = r;
-      return formatRole(
-        { ...roleFields, isRemote: roleFields.isRemote ?? false },
-        companyName ?? "",
-        countMap[r.id] ?? 0
-      );
-    });
-
-    res.json(result);
+    res.json(
+      rows.map((r) => {
+        const { companyName, ...roleFields } = r;
+        return formatRole(
+          { ...roleFields, isRemote: roleFields.isRemote ?? false },
+          companyName ?? "",
+          countMap[r.id] ?? 0,
+        );
+      })
+    );
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "Internal Server Error" });
+    Errors.internal(res);
   }
 });
 
 router.get("/:id", requireAuth, async (req, res) => {
   try {
     const id = Number(req.params.id);
-    const { role: userRole, companyId } = req.user!;
+    const { role: userRole } = req.user!;
 
     const [row] = await db
       .select({
@@ -119,201 +131,163 @@ router.get("/:id", requireAuth, async (req, res) => {
       .where(eq(jobRolesTable.id, id));
 
     if (!row) {
-      res.status(404).json({ error: "Not Found" });
-      return;
-    }
-
-    if (userRole === "client" && companyId && row.companyId !== companyId) {
-      res.status(403).json({ error: "Forbidden" });
-      return;
-    }
-
-    if (userRole === "vendor" && row.status !== "published") {
-      res.status(403).json({ error: "Forbidden" });
-      return;
-    }
-
-    const [{ cnt }] = await db
-      .select({ cnt: count() })
-      .from(candidatesTable)
-      .where(eq(candidatesTable.roleId, id));
-
-    res.json(formatRole({ ...row, isRemote: row.isRemote ?? false }, row.companyName ?? "", Number(cnt)));
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Internal Server Error" });
-  }
-});
-
-router.post("/", requireAuth, async (req, res) => {
-  try {
-    const { role: userRole } = req.user!;
-    if (userRole !== "admin" && userRole !== "client") {
-      res.status(403).json({ error: "Forbidden", message: "Insufficient permissions" });
-      return;
-    }
-
-    const { title, description, skills, salaryMin, salaryMax, location, employmentType, isRemote } = req.body;
-    if (!title) {
-      res.status(400).json({ error: "Bad Request", message: "title required" });
-      return;
-    }
-
-    const companyId = userRole === "admin" ? (req.body.companyId ?? req.user!.companyId) : req.user!.companyId;
-    if (!companyId) {
-      res.status(400).json({ error: "Bad Request", message: "User has no associated company" });
-      return;
-    }
-
-    const [role] = await db
-      .insert(jobRolesTable)
-      .values({
-        title,
-        description: description ?? null,
-        skills: skills ?? null,
-        salaryMin: salaryMin != null ? String(salaryMin) : null,
-        salaryMax: salaryMax != null ? String(salaryMax) : null,
-        location: location ?? null,
-        employmentType: employmentType ?? null,
-        isRemote: isRemote ?? false,
-        status: "draft",
-        companyId,
-      })
-      .returning();
-
-    const [company] = await db
-      .select({ name: companiesTable.name })
-      .from(companiesTable)
-      .where(eq(companiesTable.id, companyId));
-
-    res.status(201).json(formatRole(role, company?.name ?? "", 0));
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Internal Server Error" });
-  }
-});
-
-router.patch("/:id", requireAuth, async (req, res) => {
-  try {
-    const id = Number(req.params.id);
-    const { role: userRole, companyId } = req.user!;
-
-    if (userRole === "vendor") {
-      res.status(403).json({ error: "Forbidden", message: "Vendors cannot modify roles" });
-      return;
-    }
-
-    const [existing] = await db
-      .select({ companyId: jobRolesTable.companyId })
-      .from(jobRolesTable)
-      .where(eq(jobRolesTable.id, id));
-
-    if (!existing) {
-      res.status(404).json({ error: "Not Found" });
-      return;
-    }
-
-    if (userRole === "client" && companyId && existing.companyId !== companyId) {
-      res.status(403).json({ error: "Forbidden" });
-      return;
-    }
-
-    const { title, description, skills, salaryMin, salaryMax, location, employmentType, isRemote } = req.body;
-
-    const updates: Record<string, unknown> = { updatedAt: new Date() };
-    if (title !== undefined) updates.title = title;
-    if (description !== undefined) updates.description = description;
-    if (skills !== undefined) updates.skills = skills;
-    if (salaryMin !== undefined) updates.salaryMin = salaryMin != null ? String(salaryMin) : null;
-    if (salaryMax !== undefined) updates.salaryMax = salaryMax != null ? String(salaryMax) : null;
-    if (location !== undefined) updates.location = location;
-    if (employmentType !== undefined) updates.employmentType = employmentType;
-    if (isRemote !== undefined) updates.isRemote = isRemote;
-
-    const [role] = await db
-      .update(jobRolesTable)
-      .set(updates)
-      .where(eq(jobRolesTable.id, id))
-      .returning();
-
-    const [company] = await db
-      .select({ name: companiesTable.name })
-      .from(companiesTable)
-      .where(eq(companiesTable.id, role.companyId));
-
-    const [{ cnt }] = await db
-      .select({ cnt: count() })
-      .from(candidatesTable)
-      .where(eq(candidatesTable.roleId, id));
-
-    res.json(formatRole(role, company?.name ?? "", Number(cnt)));
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Internal Server Error" });
-  }
-});
-
-router.patch("/:id/status", requireAuth, async (req, res) => {
-  try {
-    const id = Number(req.params.id);
-    const { status } = req.body;
-    const validStatuses = ["draft", "pending_approval", "published", "closed"];
-
-    if (!status || !validStatuses.includes(status)) {
-      res.status(400).json({ error: "Bad Request", message: "Valid status required" });
-      return;
-    }
-
-    const [existing] = await db.select().from(jobRolesTable).where(eq(jobRolesTable.id, id));
-    if (!existing) {
-      res.status(404).json({ error: "Not Found" });
-      return;
-    }
-
-    const { role: userRole, companyId } = req.user!;
-
-    if (userRole === "vendor") {
-      res.status(403).json({ error: "Forbidden" });
+      Errors.notFound(res);
       return;
     }
 
     if (userRole === "client") {
-      if (companyId && existing.companyId !== companyId) {
-        res.status(403).json({ error: "Forbidden" });
-        return;
-      }
-      if (status !== "pending_approval") {
-        res.status(403).json({ error: "Forbidden", message: "Clients can only submit for approval" });
+      const { companyId } = req.user!;
+      if (!companyId || row.companyId !== companyId) {
+        Errors.forbidden(res);
         return;
       }
     }
 
-    if (status === "published" && userRole !== "admin") {
-      res.status(403).json({ error: "Forbidden", message: "Only admins can publish roles" });
+    if (userRole === "vendor" && row.status !== "published") {
+      Errors.forbidden(res);
       return;
     }
 
-    const [role] = await db
-      .update(jobRolesTable)
-      .set({ status, updatedAt: new Date() })
-      .where(eq(jobRolesTable.id, id))
-      .returning();
-
-    const [company] = await db
-      .select({ name: companiesTable.name })
-      .from(companiesTable)
-      .where(eq(companiesTable.id, role.companyId));
-
-    const [{ cnt }] = await db
-      .select({ cnt: count() })
-      .from(candidatesTable)
-      .where(eq(candidatesTable.roleId, id));
-
-    res.json(formatRole(role, company?.name ?? "", Number(cnt)));
+    const candidateCount = await getCandidateCount(id);
+    res.json(formatRole({ ...row, isRemote: row.isRemote ?? false }, row.companyName ?? "", candidateCount));
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "Internal Server Error" });
+    Errors.internal(res);
   }
 });
+
+router.post(
+  "/",
+  requireAuth,
+  requireRole("admin", "client"),
+  validate(CreateRoleSchema),
+  async (req, res) => {
+    try {
+      const { title, description, skills, salaryMin, salaryMax, location, employmentType, isRemote } = req.body;
+      const { role: userRole } = req.user!;
+
+      const companyId =
+        userRole === "admin" ? (req.body.companyId ?? req.user!.companyId) : req.user!.companyId;
+
+      if (!companyId) {
+        Errors.badRequest(res, "User has no associated company");
+        return;
+      }
+
+      const [role] = await db
+        .insert(jobRolesTable)
+        .values({
+          title,
+          description: description ?? null,
+          skills: skills ?? null,
+          salaryMin: salaryMin != null ? String(salaryMin) : null,
+          salaryMax: salaryMax != null ? String(salaryMax) : null,
+          location: location ?? null,
+          employmentType: employmentType ?? null,
+          isRemote: isRemote ?? false,
+          status: "draft",
+          companyId,
+        })
+        .returning();
+
+      const [company] = await db
+        .select({ name: companiesTable.name })
+        .from(companiesTable)
+        .where(eq(companiesTable.id, companyId));
+
+      res.status(201).json(formatRole(role, company?.name ?? "", 0));
+    } catch (err) {
+      console.error(err);
+      Errors.internal(res);
+    }
+  }
+);
+
+router.patch(
+  "/:id",
+  requireAuth,
+  requireRole("admin", "client"),
+  validate(UpdateRoleSchema),
+  async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const access = await resolveRoleAccess(req, res, id);
+      if (!access) return;
+
+      const { title, description, skills, salaryMin, salaryMax, location, employmentType, isRemote } = req.body;
+
+      const updates: Record<string, unknown> = { updatedAt: new Date() };
+      if (title !== undefined) updates.title = title;
+      if (description !== undefined) updates.description = description;
+      if (skills !== undefined) updates.skills = skills;
+      if (salaryMin !== undefined) updates.salaryMin = salaryMin != null ? String(salaryMin) : null;
+      if (salaryMax !== undefined) updates.salaryMax = salaryMax != null ? String(salaryMax) : null;
+      if (location !== undefined) updates.location = location;
+      if (employmentType !== undefined) updates.employmentType = employmentType;
+      if (isRemote !== undefined) updates.isRemote = isRemote;
+
+      const [role] = await db
+        .update(jobRolesTable)
+        .set(updates)
+        .where(eq(jobRolesTable.id, id))
+        .returning();
+
+      const [company] = await db
+        .select({ name: companiesTable.name })
+        .from(companiesTable)
+        .where(eq(companiesTable.id, role.companyId));
+
+      const candidateCount = await getCandidateCount(id);
+      res.json(formatRole(role, company?.name ?? "", candidateCount));
+    } catch (err) {
+      console.error(err);
+      Errors.internal(res);
+    }
+  }
+);
+
+router.patch(
+  "/:id/status",
+  requireAuth,
+  requireRole("admin", "client"),
+  validate(RoleStatusSchema),
+  async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const { status } = req.body;
+      const { role: userRole } = req.user!;
+
+      const access = await resolveRoleAccess(req, res, id);
+      if (!access) return;
+
+      if (userRole === "client" && status !== "pending_approval") {
+        Errors.forbidden(res, "Clients can only submit roles for approval");
+        return;
+      }
+
+      if (status === "published" && userRole !== "admin") {
+        Errors.forbidden(res, "Only admins can publish roles");
+        return;
+      }
+
+      const [role] = await db
+        .update(jobRolesTable)
+        .set({ status, updatedAt: new Date() })
+        .where(eq(jobRolesTable.id, id))
+        .returning();
+
+      const [company] = await db
+        .select({ name: companiesTable.name })
+        .from(companiesTable)
+        .where(eq(companiesTable.id, role.companyId));
+
+      const candidateCount = await getCandidateCount(id);
+      res.json(formatRole(role, company?.name ?? "", candidateCount));
+    } catch (err) {
+      console.error(err);
+      Errors.internal(res);
+    }
+  }
+);
 
 export default router;

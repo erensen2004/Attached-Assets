@@ -1,7 +1,11 @@
 import { Router } from "express";
 import { db, contractsTable, candidatesTable, jobRolesTable, companiesTable } from "@workspace/db";
 import { eq, inArray } from "drizzle-orm";
-import { requireAuth, requireRole } from "../lib/auth.js";
+import { requireAuth } from "../lib/auth.js";
+import { requireRole } from "../lib/authz.js";
+import { validate } from "../middlewares/validate.js";
+import { CreateContractSchema } from "../lib/schemas.js";
+import { Errors } from "../lib/errors.js";
 
 const router = Router();
 
@@ -56,10 +60,7 @@ router.get("/", requireAuth, async (req, res) => {
           .where(eq(candidatesTable.vendorCompanyId, companyId))
       ).map((c) => c.id);
 
-      if (vendorCandidateIds.length === 0) {
-        res.json([]);
-        return;
-      }
+      if (!vendorCandidateIds.length) { res.json([]); return; }
 
       const contracts = await db
         .select()
@@ -67,35 +68,28 @@ router.get("/", requireAuth, async (req, res) => {
         .where(inArray(contractsTable.candidateId, vendorCandidateIds))
         .orderBy(contractsTable.createdAt);
 
-      const result = await Promise.all(contracts.map(formatContract));
-      res.json(result);
+      res.json(await Promise.all(contracts.map(formatContract)));
       return;
     }
 
     if (userRole === "client" && companyId) {
-      const clientRoles = await db
-        .select({ id: jobRolesTable.id })
-        .from(jobRolesTable)
-        .where(eq(jobRolesTable.companyId, companyId));
+      const clientRoleIds = (
+        await db
+          .select({ id: jobRolesTable.id })
+          .from(jobRolesTable)
+          .where(eq(jobRolesTable.companyId, companyId))
+      ).map((r) => r.id);
 
-      const clientRoleIds = clientRoles.map((r) => r.id);
+      if (!clientRoleIds.length) { res.json([]); return; }
 
-      if (clientRoleIds.length === 0) {
-        res.json([]);
-        return;
-      }
+      const clientCandidateIds = (
+        await db
+          .select({ id: candidatesTable.id })
+          .from(candidatesTable)
+          .where(inArray(candidatesTable.roleId, clientRoleIds))
+      ).map((c) => c.id);
 
-      const clientCandidates = await db
-        .select({ id: candidatesTable.id })
-        .from(candidatesTable)
-        .where(inArray(candidatesTable.roleId, clientRoleIds));
-
-      const clientCandidateIds = clientCandidates.map((c) => c.id);
-
-      if (clientCandidateIds.length === 0) {
-        res.json([]);
-        return;
-      }
+      if (!clientCandidateIds.length) { res.json([]); return; }
 
       const contracts = await db
         .select()
@@ -103,48 +97,44 @@ router.get("/", requireAuth, async (req, res) => {
         .where(inArray(contractsTable.candidateId, clientCandidateIds))
         .orderBy(contractsTable.createdAt);
 
-      const result = await Promise.all(contracts.map(formatContract));
-      res.json(result);
+      res.json(await Promise.all(contracts.map(formatContract)));
       return;
     }
 
-    const allContracts = await db
-      .select()
-      .from(contractsTable)
-      .orderBy(contractsTable.createdAt);
-
-    const result = await Promise.all(allContracts.map(formatContract));
-    res.json(result);
+    const all = await db.select().from(contractsTable).orderBy(contractsTable.createdAt);
+    res.json(await Promise.all(all.map(formatContract)));
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "Internal Server Error" });
+    Errors.internal(res);
   }
 });
 
-router.post("/", requireAuth, requireRole("admin"), async (req, res) => {
-  try {
-    const { candidateId, startDate, endDate, dailyRate } = req.body;
-    if (!candidateId || !startDate || !dailyRate) {
-      res.status(400).json({ error: "Bad Request", message: "candidateId, startDate, dailyRate required" });
-      return;
+router.post(
+  "/",
+  requireAuth,
+  requireRole("admin"),
+  validate(CreateContractSchema),
+  async (req, res) => {
+    try {
+      const { candidateId, startDate, endDate, dailyRate } = req.body;
+
+      const [contract] = await db
+        .insert(contractsTable)
+        .values({
+          candidateId,
+          startDate,
+          endDate: endDate ?? null,
+          dailyRate: String(dailyRate),
+          isActive: true,
+        })
+        .returning();
+
+      res.status(201).json(await formatContract(contract));
+    } catch (err) {
+      console.error(err);
+      Errors.internal(res);
     }
-
-    const [contract] = await db
-      .insert(contractsTable)
-      .values({
-        candidateId,
-        startDate,
-        endDate: endDate ?? null,
-        dailyRate: String(dailyRate),
-        isActive: true,
-      })
-      .returning();
-
-    res.status(201).json(await formatContract(contract));
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Internal Server Error" });
   }
-});
+);
 
 export default router;

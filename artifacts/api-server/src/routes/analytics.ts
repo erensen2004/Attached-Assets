@@ -1,13 +1,14 @@
 import { Router } from "express";
 import { db, jobRolesTable, candidatesTable, companiesTable, usersTable } from "@workspace/db";
 import { eq, count, sql } from "drizzle-orm";
-import { requireAuth, requireRole } from "../lib/auth.js";
+import { requireAuth } from "../lib/auth.js";
+import { requireRole } from "../lib/authz.js";
+import { Errors } from "../lib/errors.js";
 
 const router = Router();
 
-router.get("/", requireAuth, requireRole("admin"), async (req, res) => {
+router.get("/", requireAuth, requireRole("admin"), async (_req, res) => {
   try {
-    const { role: userRole, companyId } = req.user!;
 
     const [totals] = await db
       .select({
@@ -60,7 +61,7 @@ router.get("/", requireAuth, requireRole("admin"), async (req, res) => {
     });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "Internal Server Error" });
+    Errors.internal(res);
   }
 });
 

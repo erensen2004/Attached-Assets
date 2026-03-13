@@ -1,24 +1,11 @@
 import { Router, type Request, type Response } from "express";
 import { Readable } from "stream";
-import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage";
+import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage.js";
+import { ObjectPermission } from "../lib/objectAcl.js";
 import { requireAuth } from "../lib/auth.js";
-
-interface RequestUploadUrlBodyType {
-  name: string;
-  size: number;
-  contentType: string;
-}
-
-const RequestUploadUrlBody = {
-  safeParse: (data: unknown): { success: false } | { success: true; data: RequestUploadUrlBodyType } => {
-    if (!data || typeof data !== "object") return { success: false };
-    const d = data as Record<string, unknown>;
-    if (typeof d.name !== "string" || typeof d.size !== "number" || typeof d.contentType !== "string") {
-      return { success: false };
-    }
-    return { success: true, data: { name: d.name, size: d.size, contentType: d.contentType } };
-  }
-};
+import { validate } from "../middlewares/validate.js";
+import { RequestUploadUrlSchema } from "../lib/schemas.js";
+import { Errors } from "../lib/errors.js";
 
 const router = Router();
 const objectStorageService = new ObjectStorageService();
@@ -27,30 +14,69 @@ const objectStorageService = new ObjectStorageService();
  * POST /storage/uploads/request-url
  *
  * Request a presigned URL for file upload. Requires authentication.
+ * Stores ACL metadata (owner, companyId, visibility=private) on the object.
  */
-router.post("/storage/uploads/request-url", requireAuth, async (req: Request, res: Response) => {
-  const parsed = RequestUploadUrlBody.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: "Missing or invalid required fields" });
-    return;
+router.post(
+  "/storage/uploads/request-url",
+  requireAuth,
+  validate(RequestUploadUrlSchema),
+  async (req: Request, res: Response) => {
+    try {
+      const { name, size, contentType } = req.body;
+      const { userId, companyId } = req.user!;
+
+      const uploadURL = await objectStorageService.getObjectEntityUploadURL();
+      const objectPath = objectStorageService.normalizeObjectEntityPath(uploadURL);
+
+      await objectStorageService.trySetObjectEntityAclPolicy(uploadURL, {
+        owner: String(userId),
+        visibility: "private",
+      }).catch((err) => {
+        console.warn("Could not set ACL on upload (object may not exist yet):", err.message);
+      });
+
+      res.json({
+        uploadURL,
+        objectPath,
+        metadata: { name, size, contentType, ownerId: userId, companyId },
+      });
+    } catch (error) {
+      console.error("Error generating upload URL:", error);
+      Errors.internal(res, "Failed to generate upload URL");
+    }
   }
+);
 
-  try {
-    const { name, size, contentType } = parsed.data;
+/**
+ * POST /storage/uploads/confirm
+ *
+ * Called after a file upload completes, to write final ACL metadata.
+ */
+router.post(
+  "/storage/uploads/confirm",
+  requireAuth,
+  async (req: Request, res: Response) => {
+    try {
+      const { objectPath } = req.body;
+      if (!objectPath || typeof objectPath !== "string") {
+        Errors.badRequest(res, "objectPath required");
+        return;
+      }
 
-    const uploadURL = await objectStorageService.getObjectEntityUploadURL();
-    const objectPath = objectStorageService.normalizeObjectEntityPath(uploadURL);
+      const { userId } = req.user!;
 
-    res.json({
-      uploadURL,
-      objectPath,
-      metadata: { name, size, contentType },
-    });
-  } catch (error) {
-    console.error("Error generating upload URL:", error);
-    res.status(500).json({ error: "Failed to generate upload URL" });
+      await objectStorageService.trySetObjectEntityAclPolicy(objectPath, {
+        owner: String(userId),
+        visibility: "private",
+      });
+
+      res.json({ success: true, objectPath });
+    } catch (error) {
+      console.error("Error confirming upload:", error);
+      Errors.internal(res, "Failed to confirm upload");
+    }
   }
-});
+);
 
 /**
  * GET /storage/public-objects/*
@@ -62,58 +88,74 @@ router.get("/storage/public-objects/*filePath", async (req: Request, res: Respon
     const raw = req.params.filePath;
     const filePath = Array.isArray(raw) ? raw.join("/") : raw;
     const file = await objectStorageService.searchPublicObject(filePath);
+
     if (!file) {
-      res.status(404).json({ error: "File not found" });
+      Errors.notFound(res, "File not found");
       return;
     }
 
     const response = await objectStorageService.downloadObject(file);
-
     res.status(response.status);
     response.headers.forEach((value, key) => res.setHeader(key, value));
 
     if (response.body) {
-      const nodeStream = Readable.fromWeb(response.body as ReadableStream<Uint8Array>);
-      nodeStream.pipe(res);
+      Readable.fromWeb(response.body as ReadableStream<Uint8Array>).pipe(res);
     } else {
       res.end();
     }
   } catch (error) {
     console.error("Error serving public object:", error);
-    res.status(500).json({ error: "Failed to serve public object" });
+    Errors.internal(res, "Failed to serve public object");
   }
 });
 
 /**
  * GET /storage/objects/*
  *
- * Serve private object entities (e.g., CVs). Requires authentication.
+ * Serve private objects (e.g. CVs). Requires authentication + ownership check.
+ *
+ * Access rules:
+ * - admin → always allowed
+ * - others → ACL owner must match the authenticated user ID
  */
 router.get("/storage/objects/*path", requireAuth, async (req: Request, res: Response) => {
   try {
     const raw = req.params.path;
     const wildcardPath = Array.isArray(raw) ? raw.join("/") : raw;
     const objectPath = `/objects/${wildcardPath}`;
+
     const objectFile = await objectStorageService.getObjectEntityFile(objectPath);
+    const { userId, role: userRole } = req.user!;
+
+    if (userRole !== "admin") {
+      const canAccess = await objectStorageService.canAccessObjectEntity({
+        userId: String(userId),
+        objectFile,
+        requestedPermission: ObjectPermission.READ,
+      });
+
+      if (!canAccess) {
+        Errors.forbidden(res, "You do not have access to this file");
+        return;
+      }
+    }
 
     const response = await objectStorageService.downloadObject(objectFile);
-
     res.status(response.status);
     response.headers.forEach((value, key) => res.setHeader(key, value));
 
     if (response.body) {
-      const nodeStream = Readable.fromWeb(response.body as ReadableStream<Uint8Array>);
-      nodeStream.pipe(res);
+      Readable.fromWeb(response.body as ReadableStream<Uint8Array>).pipe(res);
     } else {
       res.end();
     }
   } catch (error) {
-    console.error("Error serving object:", error);
     if (error instanceof ObjectNotFoundError) {
-      res.status(404).json({ error: "Object not found" });
+      Errors.notFound(res, "Object not found");
       return;
     }
-    res.status(500).json({ error: "Failed to serve object" });
+    console.error("Error serving object:", error);
+    Errors.internal(res, "Failed to serve object");
   }
 });
 

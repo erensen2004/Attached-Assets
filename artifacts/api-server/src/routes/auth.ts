@@ -3,16 +3,15 @@ import bcrypt from "bcryptjs";
 import { db, usersTable, companiesTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { requireAuth, signToken } from "../lib/auth.js";
+import { validate } from "../middlewares/validate.js";
+import { LoginSchema } from "../lib/schemas.js";
+import { Errors } from "../lib/errors.js";
 
 const router = Router();
 
-router.post("/login", async (req, res) => {
+router.post("/login", validate(LoginSchema), async (req, res) => {
   try {
     const { email, password } = req.body;
-    if (!email || !password) {
-      res.status(400).json({ error: "Bad Request", message: "Email and password required" });
-      return;
-    }
 
     const [user] = await db
       .select({
@@ -28,13 +27,13 @@ router.post("/login", async (req, res) => {
       .where(eq(usersTable.email, email.toLowerCase()));
 
     if (!user || !user.isActive) {
-      res.status(401).json({ error: "Unauthorized", message: "Invalid email or password" });
+      Errors.unauthorized(res, "Invalid email or password");
       return;
     }
 
     const passwordMatch = await bcrypt.compare(password, user.passwordHash);
     if (!passwordMatch) {
-      res.status(401).json({ error: "Unauthorized", message: "Invalid email or password" });
+      Errors.unauthorized(res, "Invalid email or password");
       return;
     }
 
@@ -61,7 +60,7 @@ router.post("/login", async (req, res) => {
     });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "Internal Server Error" });
+    Errors.internal(res);
   }
 });
 
@@ -79,7 +78,7 @@ router.get("/me", requireAuth, async (req, res) => {
       .where(eq(usersTable.id, req.user!.userId));
 
     if (!user) {
-      res.status(404).json({ error: "Not Found" });
+      Errors.notFound(res, "User not found");
       return;
     }
 
@@ -95,7 +94,7 @@ router.get("/me", requireAuth, async (req, res) => {
     res.json({ ...user, companyName });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "Internal Server Error" });
+    Errors.internal(res);
   }
 });
 

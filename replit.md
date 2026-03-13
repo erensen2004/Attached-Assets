@@ -47,8 +47,16 @@ artifacts-monorepo/
 ├── artifacts/
 │   ├── api-server/         # Express API server (port 8080, path /api)
 │   │   └── src/
-│   │       ├── lib/auth.ts     # JWT middleware
-│   │       └── routes/         # auth, companies, users, roles, candidates, contracts, timesheets, notes, analytics, cv-parse
+│   │       ├── lib/
+│   │       │   ├── auth.ts        # JWT middleware (requireAuth, signToken)
+│   │       │   ├── authz.ts       # Ownership helpers (requireRole, resolveCandidateAccess, resolveRoleAccess)
+│   │       │   ├── errors.ts      # Centralized API error helpers (Errors.*)
+│   │       │   ├── schemas.ts     # All Zod validation schemas
+│   │       │   ├── objectAcl.ts   # GCS ACL policies
+│   │       │   └── objectStorage.ts # GCS service wrapper
+│   │       ├── middlewares/
+│   │       │   └── validate.ts    # Reusable Zod validation middleware
+│   │       └── routes/            # auth, companies, users, roles, candidates, contracts, timesheets, notes, analytics, cv-parse, storage
 │   └── ats-platform/       # React + Vite frontend (port 25964, path /)
 │       └── src/
 │           ├── pages/
@@ -92,7 +100,10 @@ artifacts-monorepo/
 ## CV Parsing
 
 Requires `REPLIT_AI_TOKEN` (Replit built-in AI) or `OPENAI_API_KEY` environment variable.
-Endpoint: POST /api/cv-parse with body `{ cvText: "..." }`.
+Two modes:
+1. **Text mode**: POST /api/cv-parse with JSON body `{ cvText: "..." }`
+2. **PDF mode**: POST /api/cv-parse with `Content-Type: application/pdf` and binary PDF body (auto-extracts text via pdf-parse, falls back to manual cvText if extraction fails)
+Only accessible to vendors. AI response is validated with Zod before returning.
 
 ## Important: Rebuilding Packages After Changes
 

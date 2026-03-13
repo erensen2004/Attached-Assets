@@ -2,7 +2,9 @@ import { Router } from "express";
 import bcrypt from "bcryptjs";
 import { db, usersTable, companiesTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { requireAuth, requireRole } from "../lib/auth.js";
+import { requireAuth } from "../lib/auth.js";
+import { requireRole } from "../lib/authz.js";
+import { Errors } from "../lib/errors.js";
 
 const router = Router();
 
@@ -26,7 +28,7 @@ router.get("/", requireAuth, requireRole("admin"), async (_req, res) => {
     res.json(users);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "Internal Server Error" });
+    Errors.internal(res);
   }
 });
 
@@ -34,11 +36,11 @@ router.post("/", requireAuth, requireRole("admin"), async (req, res) => {
   try {
     const { email, name, password, role, companyId } = req.body;
     if (!email || !name || !password || !role) {
-      res.status(400).json({ error: "Bad Request", message: "email, name, password, role required" });
+      Errors.badRequest(res, "email, name, password, role required");
       return;
     }
     if (!["admin", "client", "vendor"].includes(role)) {
-      res.status(400).json({ error: "Bad Request", message: "role must be admin|client|vendor" });
+      Errors.badRequest(res, "role must be admin|client|vendor");
       return;
     }
 
@@ -59,11 +61,11 @@ router.post("/", requireAuth, requireRole("admin"), async (req, res) => {
     res.status(201).json({ ...user, companyName: null });
   } catch (err: unknown) {
     if ((err as { code?: string }).code === "23505") {
-      res.status(409).json({ error: "Conflict", message: "Email already exists" });
+      Errors.conflict(res, "Email already exists");
       return;
     }
     console.error(err);
-    res.status(500).json({ error: "Internal Server Error" });
+    Errors.internal(res);
   }
 });
 
@@ -81,7 +83,7 @@ router.patch("/:id", requireAuth, requireRole("admin"), async (req, res) => {
     if (password) updates.passwordHash = await bcrypt.hash(password, 10);
 
     if (Object.keys(updates).length === 0) {
-      res.status(400).json({ error: "Bad Request", message: "No fields to update" });
+      Errors.badRequest(res, "No fields to update");
       return;
     }
 
@@ -100,7 +102,7 @@ router.patch("/:id", requireAuth, requireRole("admin"), async (req, res) => {
       });
 
     if (!user) {
-      res.status(404).json({ error: "Not Found" });
+      Errors.notFound(res);
       return;
     }
 
@@ -116,7 +118,7 @@ router.patch("/:id", requireAuth, requireRole("admin"), async (req, res) => {
     res.json({ ...user, companyName });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "Internal Server Error" });
+    Errors.internal(res);
   }
 });
 
