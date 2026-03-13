@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, contractsTable, candidatesTable, jobRolesTable, companiesTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { requireAuth, requireRole } from "../lib/auth.js";
 
 const router = Router();
@@ -48,11 +48,6 @@ router.get("/", requireAuth, async (req, res) => {
   try {
     const { role: userRole, companyId } = req.user!;
 
-    const allContracts = await db
-      .select()
-      .from(contractsTable)
-      .orderBy(contractsTable.createdAt);
-
     if (userRole === "vendor" && companyId) {
       const vendorCandidateIds = (
         await db
@@ -61,11 +56,62 @@ router.get("/", requireAuth, async (req, res) => {
           .where(eq(candidatesTable.vendorCompanyId, companyId))
       ).map((c) => c.id);
 
-      const filtered = allContracts.filter((c) => vendorCandidateIds.includes(c.candidateId));
-      const result = await Promise.all(filtered.map(formatContract));
+      if (vendorCandidateIds.length === 0) {
+        res.json([]);
+        return;
+      }
+
+      const contracts = await db
+        .select()
+        .from(contractsTable)
+        .where(inArray(contractsTable.candidateId, vendorCandidateIds))
+        .orderBy(contractsTable.createdAt);
+
+      const result = await Promise.all(contracts.map(formatContract));
       res.json(result);
       return;
     }
+
+    if (userRole === "client" && companyId) {
+      const clientRoles = await db
+        .select({ id: jobRolesTable.id })
+        .from(jobRolesTable)
+        .where(eq(jobRolesTable.companyId, companyId));
+
+      const clientRoleIds = clientRoles.map((r) => r.id);
+
+      if (clientRoleIds.length === 0) {
+        res.json([]);
+        return;
+      }
+
+      const clientCandidates = await db
+        .select({ id: candidatesTable.id })
+        .from(candidatesTable)
+        .where(inArray(candidatesTable.roleId, clientRoleIds));
+
+      const clientCandidateIds = clientCandidates.map((c) => c.id);
+
+      if (clientCandidateIds.length === 0) {
+        res.json([]);
+        return;
+      }
+
+      const contracts = await db
+        .select()
+        .from(contractsTable)
+        .where(inArray(contractsTable.candidateId, clientCandidateIds))
+        .orderBy(contractsTable.createdAt);
+
+      const result = await Promise.all(contracts.map(formatContract));
+      res.json(result);
+      return;
+    }
+
+    const allContracts = await db
+      .select()
+      .from(contractsTable)
+      .orderBy(contractsTable.createdAt);
 
     const result = await Promise.all(allContracts.map(formatContract));
     res.json(result);

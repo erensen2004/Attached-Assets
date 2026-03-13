@@ -95,6 +95,8 @@ router.get("/", requireAuth, async (req, res) => {
 router.get("/:id", requireAuth, async (req, res) => {
   try {
     const id = Number(req.params.id);
+    const { role: userRole, companyId } = req.user!;
+
     const [row] = await db
       .select({
         id: jobRolesTable.id,
@@ -118,6 +120,16 @@ router.get("/:id", requireAuth, async (req, res) => {
 
     if (!row) {
       res.status(404).json({ error: "Not Found" });
+      return;
+    }
+
+    if (userRole === "client" && companyId && row.companyId !== companyId) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+
+    if (userRole === "vendor" && row.status !== "published") {
+      res.status(403).json({ error: "Forbidden" });
       return;
     }
 
@@ -147,7 +159,6 @@ router.post("/", requireAuth, async (req, res) => {
       return;
     }
 
-    // Admin can specify companyId in the body; client uses their own companyId
     const companyId = userRole === "admin" ? (req.body.companyId ?? req.user!.companyId) : req.user!.companyId;
     if (!companyId) {
       res.status(400).json({ error: "Bad Request", message: "User has no associated company" });
@@ -185,6 +196,28 @@ router.post("/", requireAuth, async (req, res) => {
 router.patch("/:id", requireAuth, async (req, res) => {
   try {
     const id = Number(req.params.id);
+    const { role: userRole, companyId } = req.user!;
+
+    if (userRole === "vendor") {
+      res.status(403).json({ error: "Forbidden", message: "Vendors cannot modify roles" });
+      return;
+    }
+
+    const [existing] = await db
+      .select({ companyId: jobRolesTable.companyId })
+      .from(jobRolesTable)
+      .where(eq(jobRolesTable.id, id));
+
+    if (!existing) {
+      res.status(404).json({ error: "Not Found" });
+      return;
+    }
+
+    if (userRole === "client" && companyId && existing.companyId !== companyId) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+
     const { title, description, skills, salaryMin, salaryMax, location, employmentType, isRemote } = req.body;
 
     const updates: Record<string, unknown> = { updatedAt: new Date() };
@@ -202,11 +235,6 @@ router.patch("/:id", requireAuth, async (req, res) => {
       .set(updates)
       .where(eq(jobRolesTable.id, id))
       .returning();
-
-    if (!role) {
-      res.status(404).json({ error: "Not Found" });
-      return;
-    }
 
     const [company] = await db
       .select({ name: companiesTable.name })
@@ -242,13 +270,26 @@ router.patch("/:id/status", requireAuth, async (req, res) => {
       return;
     }
 
-    const { role: userRole } = req.user!;
-    if (status === "pending_approval" && userRole !== "client") {
+    const { role: userRole, companyId } = req.user!;
+
+    if (userRole === "vendor") {
       res.status(403).json({ error: "Forbidden" });
       return;
     }
+
+    if (userRole === "client") {
+      if (companyId && existing.companyId !== companyId) {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
+      if (status !== "pending_approval") {
+        res.status(403).json({ error: "Forbidden", message: "Clients can only submit for approval" });
+        return;
+      }
+    }
+
     if (status === "published" && userRole !== "admin") {
-      res.status(403).json({ error: "Forbidden" });
+      res.status(403).json({ error: "Forbidden", message: "Only admins can publish roles" });
       return;
     }
 

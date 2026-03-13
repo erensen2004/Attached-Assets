@@ -1,10 +1,20 @@
 import { Router } from "express";
 import OpenAI from "openai";
-import { requireAuth } from "../lib/auth.js";
+import { z } from "zod";
+import { requireAuth, requireRole } from "../lib/auth.js";
 
 const router = Router();
 
-router.post("/", requireAuth, async (req, res) => {
+const CvParseResponseSchema = z.object({
+  firstName: z.string().min(1),
+  lastName: z.string().min(1),
+  email: z.string().email(),
+  phone: z.string().nullable().optional(),
+  skills: z.string().optional(),
+  expectedSalary: z.number().nullable().optional(),
+});
+
+router.post("/", requireAuth, requireRole("vendor"), async (req, res) => {
   try {
     const { cvText } = req.body;
 
@@ -50,14 +60,25 @@ Return only the JSON object, no markdown or extra text.`,
 
     const raw = completion.choices[0]?.message?.content ?? "{}";
 
-    let parsed: Record<string, unknown>;
+    let parsedJson: Record<string, unknown>;
     try {
-      parsed = JSON.parse(raw);
+      parsedJson = JSON.parse(raw);
     } catch {
-      parsed = {};
+      res.status(422).json({ error: "Unprocessable Entity", message: "AI returned invalid JSON" });
+      return;
     }
 
-    res.json(parsed);
+    const validated = CvParseResponseSchema.safeParse(parsedJson);
+    if (!validated.success) {
+      res.status(422).json({
+        error: "Unprocessable Entity",
+        message: "AI response did not match expected schema",
+        details: validated.error.flatten(),
+      });
+      return;
+    }
+
+    res.json(validated.data);
   } catch (err) {
     console.error("CV parse error:", err);
     res.status(500).json({ error: "Internal Server Error", message: "CV parsing failed" });

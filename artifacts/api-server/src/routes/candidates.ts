@@ -89,6 +89,8 @@ router.get("/", requireAuth, async (req, res) => {
 router.get("/:id", requireAuth, async (req, res) => {
   try {
     const id = Number(req.params.id);
+    const { role: userRole, companyId } = req.user!;
+
     const [row] = await db
       .select({
         id: candidatesTable.id,
@@ -105,6 +107,7 @@ router.get("/:id", requireAuth, async (req, res) => {
         submittedAt: candidatesTable.submittedAt,
         updatedAt: candidatesTable.updatedAt,
         roleTitle: jobRolesTable.title,
+        roleCompanyId: jobRolesTable.companyId,
         vendorCompanyName: companiesTable.name,
       })
       .from(candidatesTable)
@@ -114,6 +117,16 @@ router.get("/:id", requireAuth, async (req, res) => {
 
     if (!row) {
       res.status(404).json({ error: "Not Found" });
+      return;
+    }
+
+    if (userRole === "client" && companyId && row.roleCompanyId !== companyId) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+
+    if (userRole === "vendor" && companyId && row.vendorCompanyId !== companyId) {
+      res.status(403).json({ error: "Forbidden" });
       return;
     }
 
@@ -191,10 +204,32 @@ router.patch("/:id/status", requireAuth, requireRole("admin", "client"), async (
   try {
     const id = Number(req.params.id);
     const { status } = req.body;
+    const { role: userRole, companyId } = req.user!;
     const validStatuses = ["submitted", "screening", "interview", "offer", "hired", "rejected"];
 
     if (!status || !validStatuses.includes(status)) {
       res.status(400).json({ error: "Bad Request", message: "Valid status required" });
+      return;
+    }
+
+    const [existing] = await db
+      .select({
+        id: candidatesTable.id,
+        roleId: candidatesTable.roleId,
+        vendorCompanyId: candidatesTable.vendorCompanyId,
+        roleCompanyId: jobRolesTable.companyId,
+      })
+      .from(candidatesTable)
+      .leftJoin(jobRolesTable, eq(candidatesTable.roleId, jobRolesTable.id))
+      .where(eq(candidatesTable.id, id));
+
+    if (!existing) {
+      res.status(404).json({ error: "Not Found" });
+      return;
+    }
+
+    if (userRole === "client" && companyId && existing.roleCompanyId !== companyId) {
+      res.status(403).json({ error: "Forbidden" });
       return;
     }
 
@@ -203,11 +238,6 @@ router.patch("/:id/status", requireAuth, requireRole("admin", "client"), async (
       .set({ status, updatedAt: new Date() })
       .where(eq(candidatesTable.id, id))
       .returning();
-
-    if (!candidate) {
-      res.status(404).json({ error: "Not Found" });
-      return;
-    }
 
     const [role] = await db.select({ title: jobRolesTable.title }).from(jobRolesTable).where(eq(jobRolesTable.id, candidate.roleId));
     const [vendorCompany] = await db.select({ name: companiesTable.name }).from(companiesTable).where(eq(companiesTable.id, candidate.vendorCompanyId));

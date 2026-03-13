@@ -1,13 +1,50 @@
 import { Router } from "express";
-import { db, candidateNotesTable, usersTable } from "@workspace/db";
+import { db, candidateNotesTable, candidatesTable, jobRolesTable, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { requireAuth, requireRole } from "../lib/auth.js";
 
 const router = Router({ mergeParams: true });
 
+async function verifyCandidateAccess(
+  candidateId: number,
+  userRole: string,
+  companyId: number | null
+): Promise<{ allowed: boolean; notFound?: boolean }> {
+  const [row] = await db
+    .select({
+      id: candidatesTable.id,
+      vendorCompanyId: candidatesTable.vendorCompanyId,
+      roleCompanyId: jobRolesTable.companyId,
+    })
+    .from(candidatesTable)
+    .leftJoin(jobRolesTable, eq(candidatesTable.roleId, jobRolesTable.id))
+    .where(eq(candidatesTable.id, candidateId));
+
+  if (!row) return { allowed: false, notFound: true };
+
+  if (userRole === "admin") return { allowed: true };
+
+  if (userRole === "client" && companyId) {
+    return { allowed: row.roleCompanyId === companyId };
+  }
+
+  return { allowed: false };
+}
+
 router.get("/", requireAuth, requireRole("admin", "client"), async (req, res) => {
   try {
     const candidateId = Number(req.params.id);
+    const { role: userRole, companyId } = req.user!;
+
+    const access = await verifyCandidateAccess(candidateId, userRole, companyId);
+    if (access.notFound) {
+      res.status(404).json({ error: "Not Found", message: "Candidate not found" });
+      return;
+    }
+    if (!access.allowed) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
 
     const notes = await db
       .select()
@@ -32,10 +69,21 @@ router.get("/", requireAuth, requireRole("admin", "client"), async (req, res) =>
 router.post("/", requireAuth, requireRole("admin", "client"), async (req, res) => {
   try {
     const candidateId = Number(req.params.id);
+    const { role: userRole, companyId } = req.user!;
     const { content } = req.body;
 
     if (!content || !content.trim()) {
       res.status(400).json({ error: "Bad Request", message: "content required" });
+      return;
+    }
+
+    const access = await verifyCandidateAccess(candidateId, userRole, companyId);
+    if (access.notFound) {
+      res.status(404).json({ error: "Not Found", message: "Candidate not found" });
+      return;
+    }
+    if (!access.allowed) {
+      res.status(403).json({ error: "Forbidden" });
       return;
     }
 

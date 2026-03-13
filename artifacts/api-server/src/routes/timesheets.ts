@@ -1,6 +1,13 @@
 import { Router } from "express";
-import { db, timesheetsTable, contractsTable, candidatesTable, jobRolesTable, companiesTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import {
+  db,
+  timesheetsTable,
+  contractsTable,
+  candidatesTable,
+  jobRolesTable,
+  companiesTable,
+} from "@workspace/db";
+import { eq, inArray } from "drizzle-orm";
 import { requireAuth, requireRole } from "../lib/auth.js";
 
 const router = Router();
@@ -46,11 +53,6 @@ router.get("/", requireAuth, async (req, res) => {
   try {
     const { role: userRole, companyId } = req.user!;
 
-    const allTimesheets = await db
-      .select()
-      .from(timesheetsTable)
-      .orderBy(timesheetsTable.submittedAt);
-
     if (userRole === "vendor" && companyId) {
       const vendorCandidateIds = (
         await db
@@ -59,49 +61,86 @@ router.get("/", requireAuth, async (req, res) => {
           .where(eq(candidatesTable.vendorCompanyId, companyId))
       ).map((c) => c.id);
 
-      const vendorContractIds = (
-        await db
-          .select({ id: contractsTable.id, candidateId: contractsTable.candidateId })
-          .from(contractsTable)
-      )
-        .filter((c) => vendorCandidateIds.includes(c.candidateId))
-        .map((c) => c.id);
+      if (vendorCandidateIds.length === 0) {
+        res.json([]);
+        return;
+      }
 
-      const filtered = allTimesheets.filter((t) => vendorContractIds.includes(t.contractId));
-      const result = await Promise.all(filtered.map(formatTimesheet));
+      const vendorContracts = await db
+        .select({ id: contractsTable.id })
+        .from(contractsTable)
+        .where(inArray(contractsTable.candidateId, vendorCandidateIds));
+
+      const vendorContractIds = vendorContracts.map((c) => c.id);
+
+      if (vendorContractIds.length === 0) {
+        res.json([]);
+        return;
+      }
+
+      const timesheets = await db
+        .select()
+        .from(timesheetsTable)
+        .where(inArray(timesheetsTable.contractId, vendorContractIds))
+        .orderBy(timesheetsTable.submittedAt);
+
+      const result = await Promise.all(timesheets.map(formatTimesheet));
       res.json(result);
       return;
     }
 
     if (userRole === "client" && companyId) {
-      const clientCandidateIds = (
-        await db
-          .select({
-            id: candidatesTable.id,
-            roleId: candidatesTable.roleId,
-          })
-          .from(candidatesTable)
-      ).filter(async (c) => {
-        const [role] = await db
-          .select({ companyId: jobRolesTable.companyId })
-          .from(jobRolesTable)
-          .where(eq(jobRolesTable.id, c.roleId));
-        return role?.companyId === companyId;
-      }).map((c) => c.id);
+      const clientRoles = await db
+        .select({ id: jobRolesTable.id })
+        .from(jobRolesTable)
+        .where(eq(jobRolesTable.companyId, companyId));
 
-      const clientContractIds = (
-        await db
-          .select({ id: contractsTable.id, candidateId: contractsTable.candidateId })
-          .from(contractsTable)
-      )
-        .filter((c) => clientCandidateIds.includes(c.candidateId))
-        .map((c) => c.id);
+      const clientRoleIds = clientRoles.map((r) => r.id);
 
-      const filtered = allTimesheets.filter((t) => clientContractIds.includes(t.contractId));
-      const result = await Promise.all(filtered.map(formatTimesheet));
+      if (clientRoleIds.length === 0) {
+        res.json([]);
+        return;
+      }
+
+      const clientCandidates = await db
+        .select({ id: candidatesTable.id })
+        .from(candidatesTable)
+        .where(inArray(candidatesTable.roleId, clientRoleIds));
+
+      const clientCandidateIds = clientCandidates.map((c) => c.id);
+
+      if (clientCandidateIds.length === 0) {
+        res.json([]);
+        return;
+      }
+
+      const clientContracts = await db
+        .select({ id: contractsTable.id })
+        .from(contractsTable)
+        .where(inArray(contractsTable.candidateId, clientCandidateIds));
+
+      const clientContractIds = clientContracts.map((c) => c.id);
+
+      if (clientContractIds.length === 0) {
+        res.json([]);
+        return;
+      }
+
+      const timesheets = await db
+        .select()
+        .from(timesheetsTable)
+        .where(inArray(timesheetsTable.contractId, clientContractIds))
+        .orderBy(timesheetsTable.submittedAt);
+
+      const result = await Promise.all(timesheets.map(formatTimesheet));
       res.json(result);
       return;
     }
+
+    const allTimesheets = await db
+      .select()
+      .from(timesheetsTable)
+      .orderBy(timesheetsTable.submittedAt);
 
     const result = await Promise.all(allTimesheets.map(formatTimesheet));
     res.json(result);
@@ -119,6 +158,8 @@ router.post("/", requireAuth, requireRole("vendor"), async (req, res) => {
       return;
     }
 
+    const companyId = req.user!.companyId;
+
     const [contract] = await db
       .select()
       .from(contractsTable)
@@ -127,6 +168,18 @@ router.post("/", requireAuth, requireRole("vendor"), async (req, res) => {
     if (!contract || !contract.isActive) {
       res.status(400).json({ error: "Bad Request", message: "Contract not found or not active" });
       return;
+    }
+
+    if (companyId) {
+      const [candidate] = await db
+        .select({ vendorCompanyId: candidatesTable.vendorCompanyId })
+        .from(candidatesTable)
+        .where(eq(candidatesTable.id, contract.candidateId));
+
+      if (!candidate || candidate.vendorCompanyId !== companyId) {
+        res.status(403).json({ error: "Forbidden", message: "This contract does not belong to your company" });
+        return;
+      }
     }
 
     const totalAmount = Number(contract.dailyRate) * totalDays;
