@@ -1,9 +1,9 @@
-import { Router, type IRouter } from "express";
+import { Router } from "express";
 import { db, candidatesTable, jobRolesTable, companiesTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { requireAuth, requireRole } from "../lib/auth.js";
 
-const router: IRouter = Router();
+const router = Router();
 
 function formatCandidate(c: {
   id: number;
