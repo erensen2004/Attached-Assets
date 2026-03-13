@@ -1,9 +1,9 @@
-import { Router, type IRouter } from "express";
+import { Router } from "express";
 import { db, timesheetsTable, contractsTable, candidatesTable, jobRolesTable, companiesTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { requireAuth, requireRole } from "../lib/auth.js";
 
-const router: IRouter = Router();
+const router = Router();
 
 async function formatTimesheet(t: typeof timesheetsTable.$inferSelect) {
   const [contract] = await db
