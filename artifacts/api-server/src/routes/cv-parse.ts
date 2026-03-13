@@ -1,8 +1,8 @@
-import { Router, type IRouter } from "express";
+import { Router } from "express";
 import OpenAI from "openai";
 import { requireAuth } from "../lib/auth.js";
 
-const router: IRouter = Router();
+const router = Router();
 
 router.post("/", requireAuth, async (req, res) => {
   try {
