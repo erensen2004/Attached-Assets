@@ -6,6 +6,9 @@ import { requireAuth } from "../lib/auth.js";
 import { validate } from "../middlewares/validate.js";
 import { RequestUploadUrlSchema, ConfirmUploadSchema } from "../lib/schemas.js";
 import { Errors } from "../lib/errors.js";
+import { db, candidatesTable, jobRolesTable } from "@workspace/db";
+import { eq } from "drizzle-orm";
+import { resolveCandidateAccess } from "../lib/authz.js";
 
 const router = Router();
 const objectStorageService = new ObjectStorageService();
@@ -106,18 +109,35 @@ router.get("/storage/public-objects/*filePath", async (req: Request, res: Respon
 });
 
 /**
+ * Helper: Find candidateId by matching cvUrl/objectPath
+ * This allows us to align file access with candidate authorization.
+ */
+async function findCandidateByObjectPath(objectPath: string): Promise<number | null> {
+  const [row] = await db
+    .select({ id: candidatesTable.id })
+    .from(candidatesTable)
+    .where(eq(candidatesTable.cvUrl, objectPath))
+    .limit(1);
+  return row?.id ?? null;
+}
+
+/**
  * GET /storage/objects/*
  *
- * Serve private objects (e.g. CVs). Requires authentication + route-level authorization.
+ * Serve private objects (e.g. CVs). Requires authentication + candidate-level authorization.
  *
- * Access rules:
+ * Access rules (aligned with candidate authorization):
  * - admin → always allowed
- * - client → if candidate is in own company AND candidate has a role in that company
- * - vendor → if candidate was submitted by own company
- * - others → forbidden
+ * - client → can access CV if they're authorized to view the candidate
+ *           (candidate's role belongs to their company)
+ * - vendor → can access CV if they're authorized to view the candidate
+ *           (they submitted the candidate)
+ * - others → 403 forbidden
  *
- * Note: This is a fallback route-level check. For now, we use ACL owner + admin bypass.
- * A proper implementation would map objectPath -> candidateId -> ownership context.
+ * Implementation:
+ * 1. Resolve objectPath → candidateId (by matching cvUrl in DB)
+ * 2. Use candidate-level authorization (resolveCandidateAccess)
+ * 3. Serve file if authorized
  */
 router.get("/storage/objects/*path", requireAuth, async (req: Request, res: Response) => {
   try {
@@ -125,27 +145,36 @@ router.get("/storage/objects/*path", requireAuth, async (req: Request, res: Resp
     const wildcardPath = Array.isArray(raw) ? raw.join("/") : raw;
     const objectPath = `/objects/${wildcardPath}`;
 
-    const objectFile = await objectStorageService.getObjectEntityFile(objectPath);
-    const { userId, role: userRole, companyId } = req.user!;
-
     // Admin always has access
-    if (userRole !== "admin") {
-      const canAccess = await objectStorageService.canAccessObjectEntity({
-        userId: String(userId),
-        objectFile,
-        requestedPermission: ObjectPermission.READ,
-      });
-
-      if (!canAccess) {
-        Errors.forbidden(res, "You do not have access to this file");
-        return;
+    if (req.user!.role === "admin") {
+      const objectFile = await objectStorageService.getObjectEntityFile(objectPath);
+      const response = await objectStorageService.downloadObject(objectFile);
+      res.status(response.status);
+      response.headers.forEach((value, key) => res.setHeader(key, value));
+      if (response.body) {
+        Readable.fromWeb(response.body as ReadableStream<Uint8Array>).pipe(res);
+      } else {
+        res.end();
       }
-
-      // For non-admins: also check ACL owner is from same company (optional extra safety)
-      // This would require parsing ACL to extract companyId and doing an additional check
-      // For now, ACL owner match is sufficient
+      return;
     }
 
+    // For non-admins: resolve objectPath → candidateId and check candidate authorization
+    const candidateId = await findCandidateByObjectPath(objectPath);
+    if (!candidateId) {
+      Errors.notFound(res, "File not found");
+      return;
+    }
+
+    // Use candidate-level authorization
+    const access = await resolveCandidateAccess(req, res, candidateId);
+    if (!access) {
+      // resolveCandidateAccess already sent the error response
+      return;
+    }
+
+    // Authorization passed, fetch and serve the file
+    const objectFile = await objectStorageService.getObjectEntityFile(objectPath);
     const response = await objectStorageService.downloadObject(objectFile);
     res.status(response.status);
     response.headers.forEach((value, key) => res.setHeader(key, value));

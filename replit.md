@@ -131,3 +131,20 @@ Both `admin` and `client` roles can create job roles. Admin can specify a `compa
 - GET `/api/roles` → All (vendor sees published only; client sees own company's; admin sees all)
 - GET `/api/candidates` → All (each role sees filtered results)
 - GET `/api/timesheets`, `/api/contracts` → All (filtered by role internally)
+- GET `/api/storage/objects/*` → Aligned with candidate authorization
+  - Resolves objectPath → candidateId (via cvUrl match)
+  - Checks candidate ownership (admin/client/vendor)
+  - Serves CV only if user is authorized to view the candidate
+
+## File Access Authorization
+
+CV file access is **aligned with candidate authorization**:
+- **Admin**: Full access to all CVs
+- **Client**: Can view CVs for candidates whose roles belong to their company
+- **Vendor**: Can view CVs for candidates they submitted
+- **Others**: 403 Forbidden
+
+Implementation: `GET /api/storage/objects/*` performs three checks:
+1. Find candidate by matching cvUrl/objectPath (DB lookup)
+2. Verify user can view that candidate (resolveCandidateAccess)
+3. Serve file only if authorized
