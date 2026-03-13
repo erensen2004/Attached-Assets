@@ -1,4 +1,4 @@
-import { Router, type IRouter, type Request, type Response } from "express";
+import { Router, type Request, type Response } from "express";
 import { Readable } from "stream";
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage";
 import { ObjectPermission } from "../lib/objectAcl";
@@ -24,7 +24,7 @@ const RequestUploadUrlResponse = {
   parse: (data: unknown) => data,
 };
 
-const router: IRouter = Router();
+const router = Router();
 const objectStorageService = new ObjectStorageService();
 
 /**
