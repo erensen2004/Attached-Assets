@@ -1,30 +1,17 @@
-import { Router } from "express";
-import healthRouter from "./health.js";
-import auth from "./auth.js";
-import companies from "./companies.js";
-import users from "./users.js";
-import roles from "./roles.js";
-import candidates from "./candidates.js";
-import contracts from "./contracts.js";
-import timesheets from "./timesheets.js";
-import storageRouter from "./storage.js";
-import notesRouter from "./notes.js";
-import analyticsRouter from "./analytics.js";
-import cvParseRouter from "./cv-parse.js";
+import app from "./app.js";
+import { seedIfEmpty } from "./lib/seed.js";
 
-const router = Router();
+const PORT = process.env.PORT ? Number(process.env.PORT) : 8080;
 
-router.use(healthRouter);
-router.use("/auth", auth);
-router.use("/companies", companies);
-router.use("/users", users);
-router.use("/roles", roles);
-router.use("/candidates", candidates);
-router.use("/candidates/:id/notes", notesRouter);
-router.use("/contracts", contracts);
-router.use("/timesheets", timesheets);
-router.use("/analytics", analyticsRouter);
-router.use("/cv-parse", cvParseRouter);
-router.use(storageRouter);
+async function main() {
+  await seedIfEmpty();
 
-export default router;
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log(`API server listening on port ${PORT}`);
+  });
+}
+
+main().catch((err) => {
+  console.error("Failed to start server:", err);
+  process.exit(1);
+});
