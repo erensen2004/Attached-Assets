@@ -83,6 +83,10 @@ export const CvParseTextSchema = z.object({
   cvText: z.string().min(1).max(20000),
 });
 
+export const CvParseBodySchema = z.object({
+  cvText: z.string().min(1).max(20000),
+});
+
 export const CvParseResponseSchema = z.object({
   firstName: z.string().min(1),
   lastName: z.string().min(1),
@@ -98,4 +102,8 @@ export const RequestUploadUrlSchema = z.object({
   name: z.string().min(1).max(500),
   size: z.number().int().positive().max(50 * 1024 * 1024),
   contentType: z.string().min(1).max(100),
+});
+
+export const ConfirmUploadSchema = z.object({
+  objectPath: z.string().min(1),
 });

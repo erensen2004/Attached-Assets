@@ -52,9 +52,55 @@ export default function VendorSubmitCandidate() {
       if (!res.ok) return null;
       const { uploadURL, objectPath } = await res.json();
       await fetch(uploadURL, { method: "PUT", headers: { "Content-Type": file.type }, body: file });
+      
+      // Confirm upload to write final ACL metadata
+      const confirmRes = await fetch("/api/storage/uploads/confirm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ objectPath }),
+      });
+      if (!confirmRes.ok) {
+        console.warn("Upload confirmation failed, but file was uploaded");
+      }
+      
       return objectPath;
     } catch {
       return null;
+    }
+  };
+
+  const parsePdfCv = async (file: File): Promise<void> => {
+    if (!file.type.includes("pdf")) {
+      toast({ title: "Please select a PDF file", variant: "destructive" });
+      return;
+    }
+    setParsing(true);
+    try {
+      const token = localStorage.getItem("ats_token");
+      const res = await fetch("/api/cv-parse", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/pdf" },
+        body: file,
+      });
+      if (!res.ok) {
+        toast({ title: "PDF parsing failed", description: "Try uploading the file and fill in manually.", variant: "destructive" });
+        return;
+      }
+      const parsed = await res.json();
+      setFormData(prev => ({
+        ...prev,
+        firstName: parsed.firstName || prev.firstName,
+        lastName: parsed.lastName || prev.lastName,
+        email: parsed.email || prev.email,
+        phone: parsed.phone || prev.phone,
+        expectedSalary: parsed.expectedSalary ? String(parsed.expectedSalary) : prev.expectedSalary,
+        tags: parsed.skills || prev.tags,
+      }));
+      toast({ title: "PDF parsed successfully!", description: "Fields pre-filled from CV." });
+    } catch {
+      toast({ title: "PDF parsing error", variant: "destructive" });
+    } finally {
+      setParsing(false);
     }
   };
 
@@ -223,13 +269,33 @@ export default function VendorSubmitCandidate() {
                 type="file"
                 accept=".pdf"
                 className="hidden"
-                onChange={e => setCvFile(e.target.files?.[0] || null)}
+                onChange={e => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    setCvFile(file);
+                  }
+                }}
               />
               {cvFile ? (
-                <div className="flex items-center justify-center gap-2 text-sm font-medium text-primary">
-                  <FileText className="w-5 h-5" />
-                  <span>{cvFile.name}</span>
-                  <span className="text-slate-400 font-normal">({(cvFile.size / 1024).toFixed(0)} KB)</span>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-center gap-2 text-sm font-medium text-primary">
+                    <FileText className="w-5 h-5" />
+                    <span>{cvFile.name}</span>
+                    <span className="text-slate-400 font-normal">({(cvFile.size / 1024).toFixed(0)} KB)</span>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={e => {
+                      e.stopPropagation();
+                      parsePdfCv(cvFile);
+                    }}
+                    disabled={parsing}
+                    className="rounded-lg gap-2"
+                  >
+                    {parsing ? <><Loader2 className="w-3 h-3 animate-spin" />Parsing PDF...</> : <><Sparkles className="w-3 h-3" />Parse PDF with AI</>}
+                  </Button>
                 </div>
               ) : (
                 <div className="text-slate-400">

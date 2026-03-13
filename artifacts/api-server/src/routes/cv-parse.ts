@@ -3,7 +3,7 @@ import OpenAI from "openai";
 import { createRequire } from "module";
 import { requireAuth } from "../lib/auth.js";
 import { requireRole } from "../lib/authz.js";
-import { CvParseResponseSchema } from "../lib/schemas.js";
+import { CvParseBodySchema, CvParseResponseSchema } from "../lib/schemas.js";
 import { Errors } from "../lib/errors.js";
 
 const require = createRequire(import.meta.url);
@@ -95,12 +95,12 @@ router.post("/", requireAuth, requireRole("vendor"), async (req: Request, res: R
         return;
       }
     } else {
-      const rawText = req.body?.cvText;
-      if (!rawText || typeof rawText !== "string" || !rawText.trim()) {
-        Errors.badRequest(res, "cvText required (or send a PDF as application/pdf body)");
+      const bodyValidation = CvParseBodySchema.safeParse(req.body);
+      if (!bodyValidation.success) {
+        Errors.validation(res, bodyValidation.error.flatten());
         return;
       }
-      cvText = rawText;
+      cvText = bodyValidation.data.cvText;
     }
 
     let parsedJson: Record<string, unknown>;
